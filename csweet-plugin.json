@@ -1,0 +1,817 @@
+{
+  "$schema": "https://raw.githubusercontent.com/CrosswiredStudios/CSweetAgentSdk/main/schemas/csweet-plugin.v2.schema.json",
+  "manifestVersion": "2.0",
+  "kind": "agent",
+  "id": "com.csweet.software-architect",
+  "name": "C-Sweet Software Architect",
+  "version": "0.1.0",
+  "publisher": {
+    "id": "com.csweet",
+    "name": "C-Sweet"
+  },
+  "runtime": {
+    "type": "dotnet-project",
+    "projectPath": "src/CSweet.Agents.SoftwareArchitect/CSweet.Agents.SoftwareArchitect.csproj",
+    "targetFramework": "net10.0",
+    "defaultActivationMode": "AlwaysOn",
+    "supportsMultipleInstallations": true,
+    "maximumConcurrentJobs": 1,
+    "workspaceAccess": "None"
+  },
+  "protocol": {
+    "minimumVersion": "2.0",
+    "maximumVersion": "2.x"
+  },
+  "provides": [
+    {
+      "name": "assistant.converse.v1",
+      "description": "Converse with the Software Architect about system design and delivery tradeoffs.",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["providerProfileId", "conversationId", "prompt"],
+        "properties": {
+          "providerProfileId": { "type": "string", "format": "uuid" },
+          "conversationId": { "type": "string", "minLength": 1 },
+          "prompt": { "type": "string", "minLength": 1 },
+          "context": {
+            "type": ["object", "null"],
+            "additionalProperties": { "type": "string" }
+          },
+          "userId": { "type": ["string", "null"] },
+          "messageId": { "type": "string", "format": "uuid" },
+          "chatTurnId": { "type": "string", "format": "uuid" }
+        }
+      },
+      "outputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["conversationId", "response", "proposedActions", "createdAt"],
+        "properties": {
+          "conversationId": { "type": "string" },
+          "response": { "type": "string" },
+          "proposedActions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["actionType", "summary", "parametersJson", "requiresApproval"],
+              "properties": {
+                "actionType": { "type": "string" },
+                "summary": { "type": "string" },
+                "parametersJson": { "type": "string" },
+                "requiresApproval": { "type": "boolean" }
+              }
+            }
+          },
+          "createdAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "executionTimeoutSeconds": 120,
+      "idempotency": "work-item"
+    },
+    {
+      "name": "assistant.summarize-activity.v1",
+      "description": "Summarize architecture activity, decisions, risks, and delivery readiness.",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["providerProfileId", "conversationId", "prompt"],
+        "properties": {
+          "providerProfileId": { "type": "string", "format": "uuid" },
+          "conversationId": { "type": "string", "minLength": 1 },
+          "prompt": { "type": "string", "minLength": 1 },
+          "context": {
+            "type": ["object", "null"],
+            "additionalProperties": { "type": "string" }
+          },
+          "userId": { "type": ["string", "null"] },
+          "messageId": { "type": "string", "format": "uuid" },
+          "chatTurnId": { "type": "string", "format": "uuid" }
+        }
+      },
+      "outputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["conversationId", "response", "proposedActions", "createdAt"],
+        "properties": {
+          "conversationId": { "type": "string" },
+          "response": { "type": "string" },
+          "proposedActions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["actionType", "summary", "parametersJson", "requiresApproval"],
+              "properties": {
+                "actionType": { "type": "string" },
+                "summary": { "type": "string" },
+                "parametersJson": { "type": "string" },
+                "requiresApproval": { "type": "boolean" }
+              }
+            }
+          },
+          "createdAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "executionTimeoutSeconds": 120,
+      "idempotency": "work-item"
+    },
+    {
+      "name": "assistant.plan-work.v1",
+      "description": "Discuss architecture planning without publishing board mutations.",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["providerProfileId", "conversationId", "prompt"],
+        "properties": {
+          "providerProfileId": { "type": "string", "format": "uuid" },
+          "conversationId": { "type": "string", "minLength": 1 },
+          "prompt": { "type": "string", "minLength": 1 },
+          "context": {
+            "type": ["object", "null"],
+            "additionalProperties": { "type": "string" }
+          },
+          "userId": { "type": ["string", "null"] },
+          "messageId": { "type": "string", "format": "uuid" },
+          "chatTurnId": { "type": "string", "format": "uuid" }
+        }
+      },
+      "outputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["conversationId", "response", "proposedActions", "createdAt"],
+        "properties": {
+          "conversationId": { "type": "string" },
+          "response": { "type": "string" },
+          "proposedActions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["actionType", "summary", "parametersJson", "requiresApproval"],
+              "properties": {
+                "actionType": { "type": "string" },
+                "summary": { "type": "string" },
+                "parametersJson": { "type": "string" },
+                "requiresApproval": { "type": "boolean" }
+              }
+            }
+          },
+          "createdAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "executionTimeoutSeconds": 120,
+      "idempotency": "work-item"
+    },
+    {
+      "name": "software-architecture.design.v1",
+      "description": "Create a typed, read-only system design and incremental implementation plan.",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "boardId", "productGoal", "requirements", "acceptanceCriteria", "idempotencyKey"
+        ],
+        "properties": {
+          "boardId": { "type": "string", "format": "uuid" },
+          "productGoal": { "type": "string", "minLength": 1, "maxLength": 8000 },
+          "requirements": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 100,
+            "items": { "type": "string", "minLength": 1, "maxLength": 8000 }
+          },
+          "acceptanceCriteria": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 100,
+            "items": { "type": "string", "minLength": 1, "maxLength": 8000 }
+          },
+          "constraints": {
+            "type": ["array", "null"],
+            "items": { "type": "string", "minLength": 1, "maxLength": 8000 }
+          },
+          "nonGoals": {
+            "type": ["array", "null"],
+            "items": { "type": "string", "minLength": 1, "maxLength": 8000 }
+          },
+          "qualityAttributes": {
+            "type": ["array", "null"],
+            "items": { "type": "string", "minLength": 1, "maxLength": 8000 }
+          },
+          "desiredStartAt": { "type": ["string", "null"], "format": "date-time" },
+          "sprintLengthDays": {
+            "type": ["integer", "null"],
+            "minimum": 1,
+            "maximum": 30
+          },
+          "sourceConversationId": { "type": ["string", "null"], "format": "uuid" },
+          "idempotencyKey": { "type": "string", "minLength": 1, "maxLength": 500 }
+        }
+      },
+      "outputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["planId", "planHash", "boardId", "productGoal", "plan", "preparedAt"],
+        "properties": {
+          "planId": { "type": "string", "format": "uuid" },
+          "planHash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+          "boardId": { "type": "string", "format": "uuid" },
+          "productGoal": { "type": "string" },
+          "plan": { "$ref": "#/$defs/architecturePlan" },
+          "preparedAt": { "type": "string", "format": "date-time" }
+        },
+        "$defs": {
+          "stringArray": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "component": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name", "responsibility", "dependencies", "dependencyDirection", "exposedInterfaces"
+            ],
+            "properties": {
+              "name": { "type": "string" },
+              "responsibility": { "type": "string" },
+              "dependencies": { "$ref": "#/$defs/stringArray" },
+              "dependencyDirection": { "type": "string" },
+              "exposedInterfaces": { "$ref": "#/$defs/stringArray" }
+            }
+          },
+          "interface": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "provider", "consumer", "contract", "failureBehavior"],
+            "properties": {
+              "name": { "type": "string" },
+              "provider": { "type": "string" },
+              "consumer": { "type": "string" },
+              "contract": { "type": "string" },
+              "failureBehavior": { "type": "string" }
+            }
+          },
+          "decision": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["title", "decision", "rationale", "alternatives", "consequences"],
+            "properties": {
+              "title": { "type": "string" },
+              "decision": { "type": "string" },
+              "rationale": { "type": "string" },
+              "alternatives": { "$ref": "#/$defs/stringArray" },
+              "consequences": { "$ref": "#/$defs/stringArray" }
+            }
+          },
+          "qualityAttribute": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "scenario", "strategy", "verification"],
+            "properties": {
+              "name": { "type": "string" },
+              "scenario": { "type": "string" },
+              "strategy": { "type": "string" },
+              "verification": { "type": "string" }
+            }
+          },
+          "trace": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["requirement", "componentNames", "ticketKeys"],
+            "properties": {
+              "requirement": { "type": "string" },
+              "componentNames": { "$ref": "#/$defs/stringArray" },
+              "ticketKeys": { "$ref": "#/$defs/stringArray" }
+            }
+          },
+          "ticket": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "key", "title", "kind", "priority", "objective", "context", "requirements",
+              "acceptanceCriteria", "constraints", "interfaceAndDataChanges",
+              "implementationGuidance", "tests", "dependencies", "migrationAndRollback",
+              "estimatePoints"
+            ],
+            "properties": {
+              "key": { "type": "string" },
+              "title": { "type": "string" },
+              "kind": { "enum": ["Story", "Task"] },
+              "priority": { "enum": ["Low", "Medium", "High", "Critical"] },
+              "objective": { "type": "string" },
+              "context": { "type": "string" },
+              "requirements": { "$ref": "#/$defs/stringArray" },
+              "acceptanceCriteria": { "$ref": "#/$defs/stringArray" },
+              "constraints": { "$ref": "#/$defs/stringArray" },
+              "interfaceAndDataChanges": { "$ref": "#/$defs/stringArray" },
+              "implementationGuidance": { "$ref": "#/$defs/stringArray" },
+              "tests": { "$ref": "#/$defs/stringArray" },
+              "dependencies": { "$ref": "#/$defs/stringArray" },
+              "migrationAndRollback": { "type": "string" },
+              "estimatePoints": { "type": ["number", "null"], "minimum": 0, "maximum": 100 }
+            }
+          },
+          "sprint": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["ordinal", "name", "goal", "startsAt", "endsAt", "tickets"],
+            "properties": {
+              "ordinal": { "type": "integer", "minimum": 1 },
+              "name": { "type": "string" },
+              "goal": { "type": "string" },
+              "startsAt": { "type": ["string", "null"], "format": "date-time" },
+              "endsAt": { "type": ["string", "null"], "format": "date-time" },
+              "tickets": {
+                "type": "array",
+                "minItems": 1,
+                "items": { "$ref": "#/$defs/ticket" }
+              }
+            }
+          },
+          "architecturePlan": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "summary", "systemContext", "components", "interfaces", "dataFlows",
+              "decisions", "qualityAttributes", "failureModes", "migrationPlan",
+              "rolloutPlan", "rollbackPlan", "risks", "assumptions", "blockingQuestions",
+              "requirementTraceability", "sprints"
+            ],
+            "properties": {
+              "summary": { "type": "string" },
+              "systemContext": { "type": "string" },
+              "components": {
+                "type": "array",
+                "minItems": 1,
+                "items": { "$ref": "#/$defs/component" }
+              },
+              "interfaces": { "type": "array", "items": { "$ref": "#/$defs/interface" } },
+              "dataFlows": { "$ref": "#/$defs/stringArray" },
+              "decisions": { "type": "array", "items": { "$ref": "#/$defs/decision" } },
+              "qualityAttributes": {
+                "type": "array",
+                "minItems": 1,
+                "items": { "$ref": "#/$defs/qualityAttribute" }
+              },
+              "failureModes": { "$ref": "#/$defs/stringArray" },
+              "migrationPlan": { "type": "string" },
+              "rolloutPlan": { "type": "string" },
+              "rollbackPlan": { "type": "string" },
+              "risks": { "$ref": "#/$defs/stringArray" },
+              "assumptions": { "$ref": "#/$defs/stringArray" },
+              "blockingQuestions": { "$ref": "#/$defs/stringArray" },
+              "requirementTraceability": {
+                "type": "array",
+                "minItems": 1,
+                "items": { "$ref": "#/$defs/trace" }
+              },
+              "sprints": {
+                "type": "array",
+                "minItems": 1,
+                "items": { "$ref": "#/$defs/sprint" }
+              }
+            }
+          }
+        }
+      },
+      "executionTimeoutSeconds": 300,
+      "idempotency": "caller-key"
+    },
+    {
+      "name": "software-architecture.publish-plan.v1",
+      "description": "Publish an explicitly approved architecture plan as planned sprints and developer-ready work.",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["boardId", "design", "approval", "idempotencyKey"],
+        "properties": {
+          "boardId": { "type": "string", "format": "uuid" },
+          "design": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["planId", "planHash", "boardId", "productGoal", "plan", "preparedAt"],
+            "properties": {
+              "planId": { "type": "string", "format": "uuid" },
+              "planHash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+              "boardId": { "type": "string", "format": "uuid" },
+              "productGoal": { "type": "string" },
+              "plan": { "$ref": "#/$defs/architecturePlan" },
+              "preparedAt": { "type": "string", "format": "date-time" }
+            }
+          },
+          "approval": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["approverRole", "rationale", "approvedAt"],
+            "properties": {
+              "approverRole": { "type": "string", "minLength": 1 },
+              "rationale": { "type": "string", "minLength": 1 },
+              "approvedAt": { "type": "string", "format": "date-time" },
+              "sourceConversationId": { "type": ["string", "null"], "format": "uuid" },
+              "sourceMessageId": { "type": ["string", "null"], "format": "uuid" }
+            }
+          },
+          "idempotencyKey": { "type": "string", "minLength": 1, "maxLength": 500 }
+        },
+        "$defs": {
+          "stringArray": { "type": "array", "items": { "type": "string" } },
+          "component": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name", "responsibility", "dependencies", "dependencyDirection", "exposedInterfaces"
+            ],
+            "properties": {
+              "name": { "type": "string" },
+              "responsibility": { "type": "string" },
+              "dependencies": { "$ref": "#/$defs/stringArray" },
+              "dependencyDirection": { "type": "string" },
+              "exposedInterfaces": { "$ref": "#/$defs/stringArray" }
+            }
+          },
+          "interface": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "provider", "consumer", "contract", "failureBehavior"],
+            "properties": {
+              "name": { "type": "string" },
+              "provider": { "type": "string" },
+              "consumer": { "type": "string" },
+              "contract": { "type": "string" },
+              "failureBehavior": { "type": "string" }
+            }
+          },
+          "decision": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["title", "decision", "rationale", "alternatives", "consequences"],
+            "properties": {
+              "title": { "type": "string" },
+              "decision": { "type": "string" },
+              "rationale": { "type": "string" },
+              "alternatives": { "$ref": "#/$defs/stringArray" },
+              "consequences": { "$ref": "#/$defs/stringArray" }
+            }
+          },
+          "qualityAttribute": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "scenario", "strategy", "verification"],
+            "properties": {
+              "name": { "type": "string" },
+              "scenario": { "type": "string" },
+              "strategy": { "type": "string" },
+              "verification": { "type": "string" }
+            }
+          },
+          "trace": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["requirement", "componentNames", "ticketKeys"],
+            "properties": {
+              "requirement": { "type": "string" },
+              "componentNames": { "$ref": "#/$defs/stringArray" },
+              "ticketKeys": { "$ref": "#/$defs/stringArray" }
+            }
+          },
+          "ticket": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "key", "title", "kind", "priority", "objective", "context", "requirements",
+              "acceptanceCriteria", "constraints", "interfaceAndDataChanges",
+              "implementationGuidance", "tests", "dependencies", "migrationAndRollback",
+              "estimatePoints"
+            ],
+            "properties": {
+              "key": { "type": "string" },
+              "title": { "type": "string" },
+              "kind": { "enum": ["Story", "Task"] },
+              "priority": { "enum": ["Low", "Medium", "High", "Critical"] },
+              "objective": { "type": "string" },
+              "context": { "type": "string" },
+              "requirements": { "$ref": "#/$defs/stringArray" },
+              "acceptanceCriteria": { "$ref": "#/$defs/stringArray" },
+              "constraints": { "$ref": "#/$defs/stringArray" },
+              "interfaceAndDataChanges": { "$ref": "#/$defs/stringArray" },
+              "implementationGuidance": { "$ref": "#/$defs/stringArray" },
+              "tests": { "$ref": "#/$defs/stringArray" },
+              "dependencies": { "$ref": "#/$defs/stringArray" },
+              "migrationAndRollback": { "type": "string" },
+              "estimatePoints": { "type": ["number", "null"], "minimum": 0, "maximum": 100 }
+            }
+          },
+          "sprint": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["ordinal", "name", "goal", "startsAt", "endsAt", "tickets"],
+            "properties": {
+              "ordinal": { "type": "integer", "minimum": 1 },
+              "name": { "type": "string" },
+              "goal": { "type": "string" },
+              "startsAt": { "type": ["string", "null"], "format": "date-time" },
+              "endsAt": { "type": ["string", "null"], "format": "date-time" },
+              "tickets": {
+                "type": "array",
+                "minItems": 1,
+                "items": { "$ref": "#/$defs/ticket" }
+              }
+            }
+          },
+          "architecturePlan": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "summary", "systemContext", "components", "interfaces", "dataFlows",
+              "decisions", "qualityAttributes", "failureModes", "migrationPlan",
+              "rolloutPlan", "rollbackPlan", "risks", "assumptions", "blockingQuestions",
+              "requirementTraceability", "sprints"
+            ],
+            "properties": {
+              "summary": { "type": "string" },
+              "systemContext": { "type": "string" },
+              "components": {
+                "type": "array",
+                "minItems": 1,
+                "items": { "$ref": "#/$defs/component" }
+              },
+              "interfaces": { "type": "array", "items": { "$ref": "#/$defs/interface" } },
+              "dataFlows": { "$ref": "#/$defs/stringArray" },
+              "decisions": { "type": "array", "items": { "$ref": "#/$defs/decision" } },
+              "qualityAttributes": {
+                "type": "array",
+                "minItems": 1,
+                "items": { "$ref": "#/$defs/qualityAttribute" }
+              },
+              "failureModes": { "$ref": "#/$defs/stringArray" },
+              "migrationPlan": { "type": "string" },
+              "rolloutPlan": { "type": "string" },
+              "rollbackPlan": { "type": "string" },
+              "risks": { "$ref": "#/$defs/stringArray" },
+              "assumptions": { "$ref": "#/$defs/stringArray" },
+              "blockingQuestions": { "$ref": "#/$defs/stringArray" },
+              "requirementTraceability": {
+                "type": "array",
+                "minItems": 1,
+                "items": { "$ref": "#/$defs/trace" }
+              },
+              "sprints": {
+                "type": "array",
+                "minItems": 1,
+                "items": { "$ref": "#/$defs/sprint" }
+              }
+            }
+          }
+        }
+      },
+      "outputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["planId", "epicId", "sprints", "tickets", "publishedAt"],
+        "properties": {
+          "planId": { "type": "string", "format": "uuid" },
+          "epicId": { "type": "string", "format": "uuid" },
+          "sprints": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["ordinal", "sprintId", "name"],
+              "properties": {
+                "ordinal": { "type": "integer" },
+                "sprintId": { "type": "string", "format": "uuid" },
+                "name": { "type": "string" }
+              }
+            }
+          },
+          "tickets": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["key", "itemId", "sprintId", "kind"],
+              "properties": {
+                "key": { "type": "string" },
+                "itemId": { "type": "string", "format": "uuid" },
+                "sprintId": { "type": "string", "format": "uuid" },
+                "kind": { "type": "string" }
+              }
+            }
+          },
+          "publishedAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "executionTimeoutSeconds": 180,
+      "idempotency": "caller-key",
+      "riskClass": "sensitive"
+    },
+    {
+      "name": "agent.configuration.describe.v1",
+      "description": "Describe Software Architect installation configuration.",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {}
+      },
+      "outputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["agentId", "agentVersion", "schemaVersion", "fields", "settings"],
+        "properties": {
+          "agentId": { "type": "string" },
+          "agentVersion": { "type": "string" },
+          "schemaVersion": { "type": "string" },
+          "fields": { "type": "array", "items": { "type": "object" } },
+          "settings": { "type": "object" }
+        }
+      },
+      "executionTimeoutSeconds": 30,
+      "idempotency": "none"
+    },
+    {
+      "name": "agent.configuration.update.v1",
+      "description": "Update Software Architect installation configuration.",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["settings"],
+        "properties": {
+          "settings": { "type": "object" }
+        }
+      },
+      "outputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["agentId", "schemaVersion", "settings", "updatedAt"],
+        "properties": {
+          "agentId": { "type": "string" },
+          "schemaVersion": { "type": "string" },
+          "settings": { "type": "object" },
+          "updatedAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "executionTimeoutSeconds": 30,
+      "idempotency": "work-item"
+    }
+  ],
+  "requires": [
+    {
+      "name": "platform.llm.chat-stream.v1",
+      "scope": "organization",
+      "purpose": "Generate architecture drafts and conversational responses through the approved provider"
+    },
+    {
+      "name": "platform.business-profile.read.v1",
+      "scope": "organization",
+      "purpose": "Ground architecture in the authoritative business profile"
+    },
+    {
+      "name": "platform.organization.snapshot.read.v1",
+      "scope": "organization",
+      "purpose": "Read objectives, workstreams, reporting lines, and accountable roles"
+    },
+    {
+      "name": "platform.team-roster.read.v1",
+      "scope": "team",
+      "purpose": "Find the bounded accountable Product or Project Manager and team role coverage"
+    },
+    {
+      "name": "communication.chat.read.v1",
+      "scope": "organization",
+      "purpose": "Verify and read an authorized architecture planning conversation"
+    },
+    {
+      "name": "communication.chat.create.v1",
+      "scope": "organization",
+      "purpose": "Open or reuse a private conversation with the accountable Product or Project Manager"
+    },
+    {
+      "name": "communication.message.send.v1",
+      "scope": "organization",
+      "purpose": "Send idempotent architecture clarifications, risks, decisions, and publication status"
+    },
+    {
+      "name": "agent.onboarding.complete.v1",
+      "scope": "organization",
+      "purpose": "Acknowledge completion of this installation's durable onboarding event"
+    },
+    {
+      "name": "work.board.read",
+      "scope": "board",
+      "purpose": "Read the approved product-team planning board"
+    },
+    {
+      "name": "work.item.read",
+      "scope": "board",
+      "purpose": "Read existing work to avoid duplicate or conflicting architecture plans"
+    },
+    {
+      "name": "work.item.create",
+      "scope": "board",
+      "purpose": "Publish approved architecture Epics, Stories, and prerequisite Tasks"
+    },
+    {
+      "name": "work.item.estimate",
+      "scope": "board",
+      "purpose": "Estimate approved leaf implementation tickets"
+    },
+    {
+      "name": "work.sprint.read",
+      "scope": "board",
+      "purpose": "Read current sprint cadence and planned increments"
+    },
+    {
+      "name": "work.sprint.create",
+      "scope": "board",
+      "purpose": "Create planned incremental delivery sprints after Product Manager approval"
+    },
+    {
+      "name": "work.sprint.scope.manage",
+      "scope": "board",
+      "purpose": "Add approved developer-ready tickets to planned sprint scope"
+    },
+    {
+      "name": "work.sprint.report.read",
+      "scope": "board",
+      "purpose": "Use historical sprint evidence without inventing velocity or capacity"
+    }
+  ],
+  "events": {
+    "subscribes": [
+      "com.csweet.agent.onboarded.v1",
+      "com.csweet.user.message.received.v1"
+    ]
+  },
+  "configuration": [
+    {
+      "key": "llmProviderId",
+      "type": "provider",
+      "label": "LLM provider",
+      "required": true,
+      "secret": false,
+      "description": "Selects the approved provider profile used for architecture work."
+    },
+    {
+      "key": "llmModel",
+      "type": "model",
+      "label": "Model",
+      "required": true,
+      "secret": false,
+      "description": "Selects the chat model used for architecture work."
+    },
+    {
+      "key": "maxContextWindowTokens",
+      "type": "number",
+      "label": "Maximum context-window tokens",
+      "required": true,
+      "secret": false,
+      "description": "Configures design-harness compaction for the selected model."
+    },
+    {
+      "key": "maxOutputTokens",
+      "type": "number",
+      "label": "Maximum output tokens",
+      "required": true,
+      "secret": false,
+      "description": "Caps one design response and reserves space during compaction."
+    },
+    {
+      "key": "defaultSprintLengthDays",
+      "type": "number",
+      "label": "Default sprint length in days",
+      "required": true,
+      "secret": false,
+      "description": "Used when an approved design request omits its sprint cadence."
+    },
+    {
+      "key": "customInstructions",
+      "type": "textarea",
+      "label": "Custom instructions",
+      "required": false,
+      "secret": false,
+      "description": "Optional architecture style guidance that cannot expand authority."
+    }
+  ],
+  "credentials": [],
+  "webAccess": {
+    "mode": "None",
+    "rules": []
+  },
+  "ui": [
+    {
+      "kind": "form",
+      "id": "software-architect-settings",
+      "title": "Software Architect settings",
+      "capability": "agent.configuration.update.v1"
+    }
+  ],
+  "catalog": {
+    "summary": "Creates robust system designs and approved incremental implementation plans.",
+    "category": "Engineering",
+    "roleAliases": ["Software Architect", "Solution Architect", "Technical Architect"],
+    "keywords": ["architecture", "system design", "SOLID", "implementation planning"],
+    "documentationUrl": "README.md"
+  }
+}

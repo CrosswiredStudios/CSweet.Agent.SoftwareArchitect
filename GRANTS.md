@@ -1,0 +1,30 @@
+# Software Architect grants
+
+This document describes the minimum authority requested by package version `0.1.0`.
+Manifest declarations request authority; installation grants and resource scopes remain
+authoritative.
+
+## Context and model
+
+- `platform.llm.chat-stream.v1` generates architecture drafts and conversational responses.
+- `platform.business-profile.read.v1` grounds designs in the authoritative business.
+- `platform.organization.snapshot.read.v1` reads current objectives, workstreams, roles, and
+  reporting lines.
+- `platform.team-roster.read.v1` finds the bounded accountable Product or Project Manager.
+
+## Conversation and lifecycle
+
+- `communication.chat.read.v1` verifies the source conversation and addressed sender.
+- `communication.chat.create.v1` opens or reuses a private manager conversation.
+- `communication.message.send.v1` sends idempotent clarifications and status.
+- `agent.onboarding.complete.v1` acknowledges the exact durable onboarding event.
+
+## Work management
+
+- `work.board.read`, `work.item.read`, `work.sprint.read`, and `work.sprint.report.read` provide
+  design context.
+- `work.item.create` and `work.item.estimate` publish approved developer-ready work.
+- `work.sprint.create` and `work.sprint.scope.manage` publish planned increments.
+
+The package does not request item assignment or transition, sprint lifecycle, board creation,
+automation, Git workspace, credential, network, database, deployment, or release authority.

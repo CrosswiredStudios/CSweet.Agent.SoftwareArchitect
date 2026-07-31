@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="src/CSweet.Agents.SoftwareArchitect/CSweet.Agents.SoftwareArchitect.csproj" />
+  <Project Path="tests/CSweet.Agents.SoftwareArchitect.Tests/CSweet.Agents.SoftwareArchitect.Tests.csproj" />
+</Solution>
