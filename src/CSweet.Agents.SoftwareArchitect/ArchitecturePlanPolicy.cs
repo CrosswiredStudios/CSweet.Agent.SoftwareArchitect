@@ -170,6 +170,36 @@ internal static class ArchitecturePlanPolicy
         if (!ordinals.SetEquals(Enumerable.Range(1, plan.Sprints.Count)))
             return "Sprint ordinals must be sequential beginning at 1.";
 
+        var ticketSequence = plan.Sprints
+            .SelectMany(sprint => sprint.Tickets.Select(ticket => new
+            {
+                Ticket = ticket,
+                Sprint = sprint.Ordinal
+            }))
+            .ToDictionary(x => x.Ticket.Key, StringComparer.OrdinalIgnoreCase);
+        foreach (var entry in ticketSequence.Values)
+        {
+            foreach (var dependencyKey in entry.Ticket.Dependencies)
+            {
+                if (!ticketSequence.TryGetValue(dependencyKey, out var dependency))
+                    return $"Ticket '{entry.Ticket.Key}' references unknown dependency '{dependencyKey}'.";
+                if (entry.Sprint < dependency.Sprint)
+                    return $"Ticket '{entry.Ticket.Key}' cannot depend on later-sprint ticket '{dependencyKey}'.";
+            }
+        }
+        var processed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        while (processed.Count < ticketSequence.Count)
+        {
+            var ready = ticketSequence.Values
+                .Where(x => !processed.Contains(x.Ticket.Key) &&
+                            x.Ticket.Dependencies.All(processed.Contains))
+                .Select(x => x.Ticket.Key)
+                .ToArray();
+            if (ready.Length == 0)
+                return "Ticket dependencies must be acyclic.";
+            processed.UnionWith(ready);
+        }
+
         if (plan.RequirementTraceability is null || plan.RequirementTraceability.Count == 0)
             return "Requirement traceability is required.";
         foreach (var trace in plan.RequirementTraceability)
@@ -211,6 +241,12 @@ internal static class ArchitecturePlanPolicy
             return "Approval rationale is required.";
         if (request.Approval.ApprovedAt == default)
             return "Approval time is required.";
+        if (request.RepositoryConnectionId == Guid.Empty)
+            return "repositoryConnectionId is required for developer-ready tickets.";
+        if (string.IsNullOrWhiteSpace(request.BaseBranch))
+            return "baseBranch is required for developer-ready tickets.";
+        if (request.FirstSprintSequence <= 0)
+            return "firstSprintSequence must be positive.";
         if (string.IsNullOrWhiteSpace(request.IdempotencyKey))
             return "idempotencyKey is required.";
         return ValidatePlan(request.Design.Plan, forPublication: true);

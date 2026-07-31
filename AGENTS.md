@@ -7,7 +7,7 @@ This repository contains one standalone C-Sweet protocol-v2 agent. Its purpose i
 
 ## Invariants
 
-- Keep `com.csweet.software-architect` and version `0.1.0` synchronized between code, project,
+- Keep `com.csweet.software-architect` and version `0.2.0` synchronized between code, project,
   `csweet-plugin.json`, tests, documentation, and releases.
 - Follow the canonical `AGENT_AUTHORING.md` distributed with `CSweet.Agent.SDK`. Keep this
   repository independently buildable and never add a source-tree reference to the SDK checkout.

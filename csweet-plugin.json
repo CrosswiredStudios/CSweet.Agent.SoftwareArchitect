@@ -4,7 +4,7 @@
   "kind": "agent",
   "id": "com.csweet.software-architect",
   "name": "C-Sweet Software Architect",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "publisher": {
     "id": "com.csweet",
     "name": "C-Sweet"
@@ -385,9 +385,15 @@
       "inputSchema": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["boardId", "design", "approval", "idempotencyKey"],
+        "required": [
+          "boardId", "design", "approval", "idempotencyKey",
+          "repositoryConnectionId", "baseBranch", "firstSprintSequence"
+        ],
         "properties": {
           "boardId": { "type": "string", "format": "uuid" },
+          "repositoryConnectionId": { "type": "string", "format": "uuid" },
+          "baseBranch": { "type": "string", "minLength": 1, "maxLength": 256 },
+          "firstSprintSequence": { "type": "integer", "minimum": 1 },
           "design": {
             "type": "object",
             "additionalProperties": false,

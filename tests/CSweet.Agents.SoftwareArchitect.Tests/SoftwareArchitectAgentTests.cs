@@ -63,7 +63,12 @@ public sealed class SoftwareArchitectAgentTests
             design.BoardId,
             design,
             new ArchitectureApproval("Engineering Lead", "Looks good.", DateTimeOffset.UtcNow),
-            "publish-1");
+            "publish-1")
+        {
+            RepositoryConnectionId = Guid.NewGuid(),
+            BaseBranch = "main",
+            FirstSprintSequence = 1
+        };
 
         var result = await new AgentTestRuntime().ExecuteCapabilityAsync(
             new SoftwareArchitectAgent(),
@@ -89,6 +94,74 @@ public sealed class SoftwareArchitectAgentTests
 
         Assert.False(result.Succeeded);
         Assert.Contains("unresolved", result.Error, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Plan_RejectsUnknownTicketDependency()
+    {
+        var plan = ArchitecturePlanSamples.MinimalValidPlan();
+        var sprint = plan.Sprints[0];
+        var ticket = sprint.Tickets[0] with { Dependencies = ["MISSING"] };
+
+        var error = ArchitecturePlanPolicy.ValidatePlan(
+            plan with { Sprints = [sprint with { Tickets = [ticket] }] },
+            forPublication: false);
+
+        Assert.Contains("unknown dependency", error, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Plan_RejectsCyclicTicketDependencies()
+    {
+        var plan = ArchitecturePlanSamples.MinimalValidPlan();
+        var sprint = plan.Sprints[0];
+        var first = sprint.Tickets[0] with { Dependencies = ["SA-2"] };
+        var second = sprint.Tickets[0] with
+        {
+            Key = "SA-2",
+            Title = "Second delivery ticket",
+            Kind = WorkItemKinds.Task,
+            Dependencies = ["SA-1"]
+        };
+
+        var error = ArchitecturePlanPolicy.ValidatePlan(
+            plan with { Sprints = [sprint with { Tickets = [first, second] }] },
+            forPublication: false);
+
+        Assert.Contains("acyclic", error, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Plan_RejectsEarlierSprintDependingOnLaterSprint()
+    {
+        var plan = ArchitecturePlanSamples.MinimalValidPlan();
+        var firstSprint = plan.Sprints[0];
+        var first = firstSprint.Tickets[0] with { Dependencies = ["SA-2"] };
+        var second = firstSprint.Tickets[0] with
+        {
+            Key = "SA-2",
+            Title = "Later sprint story",
+            Dependencies = []
+        };
+        var laterSprint = firstSprint with
+        {
+            Ordinal = 2,
+            Name = "Sprint 2",
+            Tickets = [second]
+        };
+
+        var error = ArchitecturePlanPolicy.ValidatePlan(
+            plan with
+            {
+                Sprints =
+                [
+                    firstSprint with { Tickets = [first] },
+                    laterSprint
+                ]
+            },
+            forPublication: false);
+
+        Assert.Contains("later-sprint", error, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -498,7 +571,12 @@ public sealed class SoftwareArchitectAgentTests
                 DateTimeOffset.Parse("2026-08-01T12:00:00Z"),
                 Guid.NewGuid(),
                 Guid.NewGuid()),
-            "publish-1");
+            "publish-1")
+        {
+            RepositoryConnectionId = Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"),
+            BaseBranch = "main",
+            FirstSprintSequence = 1
+        };
 
     private static WorkBoardDetail Board(Guid boardId) =>
         new(

@@ -1,7 +1,7 @@
 # C-Sweet Software Architect
 
-First-party C-Sweet Software Architect agent, version `0.1.0`, built on .NET 10,
-`CSweet.Agent.SDK` 2.2.0, Microsoft Agent Framework Harness 1.15.0, and manifest protocol v2.
+First-party C-Sweet Software Architect agent, version `0.2.0`, built on .NET 10,
+`CSweet.Agent.SDK` 2.3.0, Microsoft Agent Framework Harness 1.15.0, and manifest protocol v2.
 
 The agent converts approved product requirements into maintainable system designs, incremental
 sprint plans, and developer-ready tickets. Product and Project Managers retain ownership of
@@ -23,7 +23,11 @@ their own sake.
 `software-architecture.publish-plan.v1` is separate deterministic C#. It verifies the approved
 plan and its hash, creates one architecture Epic, creates independently testable Stories and
 necessary prerequisite Tasks, estimates leaf work, creates planned sprints, and assigns sprint
-scope. Stable keys make publication safe under at-least-once delivery and partial retries.
+scope. Publication requires the approved repository connection, base branch, and first positive
+sprint sequence so later plans can append to an existing board deterministically. Ticket
+dependencies are resolved to persisted work-item IDs and rejected when they are unknown, cyclic,
+or point from an earlier sprint to a later sprint. Stable keys make publication safe under
+at-least-once delivery and partial retries.
 
 The agent never starts or completes sprints, assigns developers, selects repositories, writes
 code, merges, deploys, or publishes releases.

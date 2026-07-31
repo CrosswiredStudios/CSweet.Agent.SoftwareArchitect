@@ -227,6 +227,7 @@ public sealed class SoftwareArchitectAgent : CSweetAgentBase
 
         var publishedSprints = new List<PublishedSprint>();
         var publishedTickets = new List<PublishedTicket>();
+        var sprintIds = new Dictionary<int, Guid>();
         var fallbackStart = NextMonday(design.PreparedAt);
         foreach (var sprintPlan in plan.Sprints.OrderBy(x => x.Ordinal))
         {
@@ -242,13 +243,49 @@ public sealed class SoftwareArchitectAgent : CSweetAgentBase
                     sprintPlan.Goal,
                     startsAt,
                     endsAt,
-                    $"{domainKey}:sprint:{sprintPlan.Ordinal}"),
+                    $"{domainKey}:sprint:{sprintPlan.Ordinal}")
+                {
+                    Sequence = input.FirstSprintSequence + sprintPlan.Ordinal - 1
+                },
                 cancellationToken);
             publishedSprints.Add(new PublishedSprint(sprintPlan.Ordinal, sprint.Id, sprint.Name));
+            sprintIds.Add(sprintPlan.Ordinal, sprint.Id);
+        }
 
-            foreach (var ticketPlan in sprintPlan.Tickets)
+        var ticketPlans = plan.Sprints
+            .SelectMany(sprint => sprint.Tickets.Select(ticket => new
             {
+                Ticket = ticket,
+                Sprint = sprint
+            }))
+            .ToDictionary(x => x.Ticket.Key, StringComparer.OrdinalIgnoreCase);
+        var itemIds = new Dictionary<string, Guid>(StringComparer.OrdinalIgnoreCase);
+        while (itemIds.Count < ticketPlans.Count)
+        {
+            var ready = ticketPlans.Values
+                .Where(x => !itemIds.ContainsKey(x.Ticket.Key) &&
+                            x.Ticket.Dependencies.All(itemIds.ContainsKey))
+                .OrderBy(x => x.Sprint.Ordinal)
+                .ThenBy(x => x.Ticket.Key, StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+            if (ready.Length == 0)
+                throw new InvalidOperationException("Approved ticket dependencies are cyclic.");
+            foreach (var entry in ready)
+            {
+                var ticketPlan = entry.Ticket;
                 var ticketKey = NormalizeKey(ticketPlan.Key);
+                var delivery = new WorkItemDeliverySpecification(
+                    input.RepositoryConnectionId,
+                    input.BaseBranch,
+                    ticketPlan.Requirements,
+                    ticketPlan.AcceptanceCriteria,
+                    ticketPlan.Constraints.Concat(
+                        ticketPlan.Tests.Select(x => $"Validation: {x}")).ToArray())
+                {
+                    DependencyItemIds = ticketPlan.Dependencies
+                        .Select(key => itemIds[key])
+                        .ToArray()
+                };
                 var item = await context.Platform.Work.CreateItemAsync(
                     new CreateWorkItemRequest(
                         input.BoardId,
@@ -258,11 +295,13 @@ public sealed class SoftwareArchitectAgent : CSweetAgentBase
                         ticketPlan.Priority,
                         null,
                         epic.Id,
-                        endsAt,
-                        $"{domainKey}:ticket:{ticketKey}"),
+                        entry.Sprint.EndsAt,
+                        $"{domainKey}:ticket:{ticketKey}")
+                    {
+                        Delivery = delivery
+                    },
                     cancellationToken);
                 if (ticketPlan.EstimatePoints is not null)
-                {
                     item = await context.Platform.Work.EstimateAsync(
                         new EstimateWorkItemRequest(
                             input.BoardId,
@@ -271,18 +310,21 @@ public sealed class SoftwareArchitectAgent : CSweetAgentBase
                             item.Revision,
                             $"{domainKey}:estimate:{ticketKey}"),
                         cancellationToken);
-                }
-
                 item = await context.Platform.Work.SetItemSprintAsync(
                     new SetWorkItemSprintRequest(
                         input.BoardId,
                         item.Id,
-                        sprint.Id,
+                        sprintIds[entry.Sprint.Ordinal],
                         item.Revision,
                         $"{domainKey}:scope:{ticketKey}"),
                     cancellationToken);
+                itemIds.Add(ticketPlan.Key, item.Id);
                 publishedTickets.Add(
-                    new PublishedTicket(ticketPlan.Key, item.Id, sprint.Id, ticketPlan.Kind));
+                    new PublishedTicket(
+                        ticketPlan.Key,
+                        item.Id,
+                        sprintIds[entry.Sprint.Ordinal],
+                        ticketPlan.Kind));
             }
         }
 

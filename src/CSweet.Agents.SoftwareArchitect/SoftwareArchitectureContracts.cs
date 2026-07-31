@@ -107,7 +107,12 @@ public sealed record ArchitecturePublishRequest(
     Guid BoardId,
     ArchitectureDesignResponse? Design,
     ArchitectureApproval? Approval,
-    string? IdempotencyKey);
+    string? IdempotencyKey)
+{
+    public Guid RepositoryConnectionId { get; init; }
+    public string? BaseBranch { get; init; }
+    public int FirstSprintSequence { get; init; }
+}
 
 public sealed record ArchitecturePublishResponse(
     Guid PlanId,
