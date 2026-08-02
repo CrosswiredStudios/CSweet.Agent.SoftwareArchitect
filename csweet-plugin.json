@@ -820,6 +820,9 @@
   "catalog": {
     "summary": "Creates robust system designs and approved incremental implementation plans.",
     "category": "Engineering",
+    "role": { "key": "software-architect", "name": "Software Architect" },
+    "license": { "spdxId": "LicenseRef-Proprietary" },
+    "iconUrls": [],
     "roleAliases": ["Software Architect", "Solution Architect", "Technical Architect"],
     "keywords": ["architecture", "system design", "SOLID", "implementation planning"],
     "documentationUrl": "README.md"
