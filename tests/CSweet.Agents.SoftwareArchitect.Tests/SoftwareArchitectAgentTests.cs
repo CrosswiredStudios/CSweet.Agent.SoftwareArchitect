@@ -271,6 +271,22 @@ public sealed class SoftwareArchitectAgentTests
         Assert.Contains("## Context", createRequests[1].Description);
         Assert.Contains("## Acceptance criteria", createRequests[1].Description);
         Assert.Contains("## Migration and rollback", createRequests[1].Description);
+        Assert.Equal(
+            Guid.Parse("cccccccc-cccc-cccc-cccc-cccccccccccc"),
+            createRequests[1].AccountableOrganizationUserId);
+        Assert.Equal(4, createRequests[1].StageAssignments.Count);
+        Assert.Contains(createRequests[1].StageAssignments, x =>
+            x.StageKey == "development" &&
+            x.AgentInstallationId == Guid.Parse("dddddddd-dddd-dddd-dddd-dddddddddddd"));
+        Assert.Contains(createRequests[1].StageAssignments, x =>
+            x.StageKey == "quality" &&
+            x.AgentInstallationId == Guid.Parse("eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee"));
+        Assert.Contains(createRequests[1].StageAssignments, x =>
+            x.StageKey == "merge-decision" &&
+            x.PrincipalKind == WorkOrchestrationPrincipalKinds.BoardManager);
+        Assert.Contains(createRequests[1].StageAssignments, x =>
+            x.StageKey == "governed-merge" &&
+            x.PlatformAction == "git.merge.qa-approved.v1");
     }
 
     [Fact]
@@ -575,7 +591,10 @@ public sealed class SoftwareArchitectAgentTests
         {
             RepositoryConnectionId = Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"),
             BaseBranch = "main",
-            FirstSprintSequence = 1
+            FirstSprintSequence = 1,
+            AccountableOrganizationUserId = Guid.Parse("cccccccc-cccc-cccc-cccc-cccccccccccc"),
+            DeveloperInstallationId = Guid.Parse("dddddddd-dddd-dddd-dddd-dddddddddddd"),
+            QualityInstallationId = Guid.Parse("eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee")
         };
 
     private static WorkBoardDetail Board(Guid boardId) =>

@@ -247,6 +247,14 @@ internal static class ArchitecturePlanPolicy
             return "baseBranch is required for developer-ready tickets.";
         if (request.FirstSprintSequence <= 0)
             return "firstSprintSequence must be positive.";
+        if (request.AccountableOrganizationUserId == Guid.Empty)
+            return "accountableOrganizationUserId is required for executable tickets.";
+        if (request.DeveloperInstallationId == Guid.Empty)
+            return "developerInstallationId is required for executable tickets.";
+        if (request.QualityInstallationId == Guid.Empty)
+            return "qualityInstallationId is required for executable tickets.";
+        if (request.DeveloperInstallationId == request.QualityInstallationId)
+            return "Developer and Software QA must use different installations.";
         if (string.IsNullOrWhiteSpace(request.IdempotencyKey))
             return "idempotencyKey is required.";
         return ValidatePlan(request.Design.Plan, forPublication: true);

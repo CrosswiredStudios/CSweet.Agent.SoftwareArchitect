@@ -1,6 +1,6 @@
 # Software Architect grants
 
-This document describes the minimum authority requested by package version `0.2.0`.
+This document describes the minimum authority requested by package version `0.3.0`.
 Manifest declarations request authority; installation grants and resource scopes remain
 authoritative.
 

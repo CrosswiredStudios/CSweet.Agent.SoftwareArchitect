@@ -112,6 +112,9 @@ public sealed record ArchitecturePublishRequest(
     public Guid RepositoryConnectionId { get; init; }
     public string? BaseBranch { get; init; }
     public int FirstSprintSequence { get; init; }
+    public Guid AccountableOrganizationUserId { get; init; }
+    public Guid DeveloperInstallationId { get; init; }
+    public Guid QualityInstallationId { get; init; }
 }
 
 public sealed record ArchitecturePublishResponse(

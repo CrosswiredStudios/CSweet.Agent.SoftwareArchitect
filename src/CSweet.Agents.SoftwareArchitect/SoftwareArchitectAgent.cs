@@ -298,7 +298,26 @@ public sealed class SoftwareArchitectAgent : CSweetAgentBase
                         entry.Sprint.EndsAt,
                         $"{domainKey}:ticket:{ticketKey}")
                     {
-                        Delivery = delivery
+                        Delivery = delivery,
+                        AccountableOrganizationUserId = input.AccountableOrganizationUserId,
+                        StageAssignments =
+                        [
+                            new WorkStageAssignment(
+                                "development",
+                                WorkOrchestrationPrincipalKinds.AgentInstallation,
+                                AgentInstallationId: input.DeveloperInstallationId),
+                            new WorkStageAssignment(
+                                "quality",
+                                WorkOrchestrationPrincipalKinds.AgentInstallation,
+                                AgentInstallationId: input.QualityInstallationId),
+                            new WorkStageAssignment(
+                                "merge-decision",
+                                WorkOrchestrationPrincipalKinds.BoardManager),
+                            new WorkStageAssignment(
+                                "governed-merge",
+                                WorkOrchestrationPrincipalKinds.PlatformAction,
+                                PlatformAction: "git.merge.qa-approved.v1")
+                        ]
                     },
                     cancellationToken);
                 if (ticketPlan.EstimatePoints is not null)
