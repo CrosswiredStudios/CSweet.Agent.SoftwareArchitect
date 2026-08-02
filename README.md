@@ -1,6 +1,6 @@
 # C-Sweet Software Architect
 
-First-party C-Sweet Software Architect agent, version `0.3.0`, built on .NET 10,
+First-party C-Sweet Software Architect agent, version `0.3.1`, built on .NET 10,
 `CSweet.Agent.SDK` 2.7.0, Microsoft Agent Framework Harness 1.15.0, and manifest protocol v2.
 
 The agent converts approved product requirements into maintainable system designs, incremental

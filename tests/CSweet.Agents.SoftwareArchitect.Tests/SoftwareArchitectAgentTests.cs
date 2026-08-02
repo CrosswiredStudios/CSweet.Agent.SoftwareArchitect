@@ -1,3 +1,4 @@
+using System.Text.Json;
 using CSweet.Agent.SDK;
 using CSweet.WorkManagement.Contracts;
 
@@ -393,7 +394,9 @@ public sealed class SoftwareArchitectAgentTests
                 0,
                 Guid.NewGuid()));
 
-        Assert.Empty(runtime.Progress);
+        Assert.Equal(2, runtime.Progress.Count);
+        Assert.Equal("Acknowledged.", runtime.Progress[0].GetProperty("delta").GetString());
+        Assert.True(runtime.Progress[1].GetProperty("isFinal").GetBoolean());
     }
 
     [Fact]
@@ -556,6 +559,8 @@ public sealed class SoftwareArchitectAgentTests
         Assert.All(sent, message => Assert.Equal(conversationId, message.ChatId));
         Assert.Single(sent.Select(x => x.IdempotencyKey).Distinct());
         Assert.Equal($"software-architect:onboarding:{eventId:N}", sent[0].IdempotencyKey);
+        Assert.Contains("delivery-planning kickoff", sent[0].Content, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("design capability", sent[0].Content, StringComparison.OrdinalIgnoreCase);
         Assert.All(completed, request => Assert.Equal(eventId, request.EventId));
     }
 

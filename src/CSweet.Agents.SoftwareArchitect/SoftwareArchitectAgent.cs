@@ -501,6 +501,13 @@ approved requirements into a maintainable system design, explicit tradeoffs, and
 testable sprint increments. I’ll return unresolved product decisions to you before publishing any
 work.
 """;
+        opening += """
+
+Treat this as the delivery-planning kickoff. Reconcile the approved team board and invoke my typed
+design capability with the approved product outcome and acceptance criteria once the shared
+repository and base branch are selected. I will return unresolved product decisions before any
+plan is published as independently testable sprint increments and developer-ready tickets.
+""";
         _ = await context.Platform.InvokeAsync<
             SendCommunicationMessageRequest,
             CommunicationHubActionResponse>(
@@ -520,9 +527,18 @@ work.
     {
         var received = DeserializePayload<UserMessageReceived>(message.Data);
         if (received is null || received.MessageId == Guid.Empty ||
-            !Guid.TryParse(received.ConversationId, out var conversationId) ||
-            IsAcknowledgement(received.Message))
+            !Guid.TryParse(received.ConversationId, out var conversationId))
             return;
+
+        if (IsAcknowledgement(received.Message))
+        {
+            await PublishConversationResponseAsync(
+                received,
+                "Acknowledged.",
+                context,
+                cancellationToken);
+            return;
+        }
 
         var transcript = await context.Platform.InvokeAsync<
             ReadCommunicationChatRequest,
@@ -549,14 +565,33 @@ work.
             SoftwareArchitectProfile.ConverseCapability,
             context,
             cancellationToken);
-        _ = await context.Platform.InvokeAsync<
-            SendCommunicationMessageRequest,
-            CommunicationHubActionResponse>(
-            SoftwareArchitectCapabilities.MessageSend,
-            new SendCommunicationMessageRequest(
-                conversationId,
+        await PublishConversationResponseAsync(received, response, context, cancellationToken);
+    }
+
+    private static async Task PublishConversationResponseAsync(
+        UserMessageReceived received,
+        string response,
+        AgentRuntimeContext context,
+        CancellationToken cancellationToken)
+    {
+        await context.ReportProgressAsync(
+            new AssistantResponseChunk(
+                received.ConversationId,
+                0,
                 response,
-                $"software-architect:message:{message.EventId:N}"),
+                IsFinal: false,
+                TurnId: received.TurnId,
+                Attempt: received.Attempt),
+            cancellationToken);
+        await context.ReportProgressAsync(
+            new AssistantResponseChunk(
+                received.ConversationId,
+                1,
+                string.Empty,
+                IsFinal: true,
+                TurnId: received.TurnId,
+                Kind: "final",
+                Attempt: received.Attempt),
             cancellationToken);
     }
 

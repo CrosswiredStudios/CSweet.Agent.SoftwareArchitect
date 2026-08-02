@@ -4,7 +4,7 @@
   "kind": "agent",
   "id": "com.csweet.software-architect",
   "name": "C-Sweet Software Architect",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "publisher": {
     "id": "com.csweet",
     "name": "C-Sweet"

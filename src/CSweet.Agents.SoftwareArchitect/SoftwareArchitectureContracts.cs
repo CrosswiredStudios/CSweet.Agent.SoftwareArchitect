@@ -158,6 +158,17 @@ public sealed record UserMessageReceived(
     int Attempt = 0,
     Guid MessageId = default);
 
+public sealed record AssistantResponseChunk(
+    string ConversationId,
+    int Sequence,
+    string Delta,
+    bool IsFinal,
+    string? Error = null,
+    Guid TurnId = default,
+    string Kind = "output",
+    IReadOnlyDictionary<string, string>? Metadata = null,
+    int Attempt = 0);
+
 public sealed record CreateCommunicationChatRequest(
     string? Title,
     string? Description,
