@@ -22,6 +22,20 @@ public sealed class ManifestTests
         Assert.Contains(AgentConfigurationCapabilities.Update, manifest.Capabilities);
         Assert.Equal("AlwaysOn", manifest.Runtime.DefaultActivationMode);
         Assert.Equal(1, manifest.Runtime.MaximumConcurrentJobs);
+        using var document = JsonDocument.Parse(await File.ReadAllTextAsync(path));
+        var configuration = document.RootElement.GetProperty("configuration").EnumerateArray().ToArray();
+        Assert.Equal(
+            SoftwareArchitectProfile.DefaultContextWindowTokens,
+            configuration.Single(field => field.GetProperty("key").GetString() == "maxContextWindowTokens")
+                .GetProperty("defaultValue").GetInt32());
+        Assert.Equal(
+            SoftwareArchitectProfile.DefaultOutputTokens,
+            configuration.Single(field => field.GetProperty("key").GetString() == "maxOutputTokens")
+                .GetProperty("defaultValue").GetInt32());
+        Assert.Equal(
+            SoftwareArchitectProfile.DefaultSprintLengthDays,
+            configuration.Single(field => field.GetProperty("key").GetString() == "defaultSprintLengthDays")
+                .GetProperty("defaultValue").GetInt32());
         Assert.True(File.Exists(Path.Combine(
             root,
             manifest.Runtime.ProjectPath!.Replace('/', Path.DirectorySeparatorChar))));
