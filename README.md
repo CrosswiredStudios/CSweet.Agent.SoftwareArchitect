@@ -1,6 +1,6 @@
 # C-Sweet Software Architect
 
-First-party C-Sweet Software Architect agent, version `0.3.2`, built on .NET 10,
+First-party C-Sweet Software Architect agent, version `0.3.3`, built on .NET 10,
 `CSweet.Agent.SDK` 2.8.0, Microsoft Agent Framework Harness 1.15.0, and manifest protocol v2.
 
 The agent converts approved product requirements into maintainable system designs, incremental
@@ -23,14 +23,19 @@ their own sake.
 `software-architecture.publish-plan.v1` is separate deterministic C#. It verifies the approved
 plan and its hash, creates one architecture Epic, creates independently testable Stories and
 necessary prerequisite Tasks, estimates leaf work, creates planned sprints, and assigns sprint
-scope. Publication requires the approved repository connection, base branch, and first positive
+scope. Junior-ready tickets include ordered implementation guidance, explicit interface and data
+behavior, observable acceptance criteria, relevant failure-path verification, rollback, and a
+positive estimate. Publication requires the approved repository connection, base branch, and first positive
 sprint sequence so later plans can append to an existing board deterministically. Ticket
 dependencies are resolved to persisted work-item IDs and rejected when they are unknown, cyclic,
-or point from an earlier sprint to a later sprint. Stable keys make publication safe under
-at-least-once delivery and partial retries.
+or point from an earlier sprint to a later sprint. When a team has multiple Developers or QA
+installations, publication deterministically assigns the next ticket to the least-loaded role
+member by estimated points, breaking ties by installation ID. Stable keys make publication safe
+under at-least-once delivery and partial retries.
 
-The agent never starts or completes sprints, assigns developers, selects repositories, writes
-code, merges, deploys, or publishes releases.
+The agent never starts or completes sprints, selects staff or repositories, manually reassigns
+work, writes code, merges, deploys, or publishes releases. Approved publication only binds each
+ticket's Development and QA stages to the Product Manager-authorized active assignment pools.
 
 ## Conversations
 

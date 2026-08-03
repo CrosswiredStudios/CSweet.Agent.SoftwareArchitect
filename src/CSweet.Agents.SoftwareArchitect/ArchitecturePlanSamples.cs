@@ -100,14 +100,27 @@ internal static class ArchitecturePlanSamples
                             "Implement the smallest coherent vertical slice.",
                             "This establishes the first reversible product path through the approved architecture boundaries.",
                             ["Deliver the approved behavior through the application boundary."],
-                            ["The behavior works end to end.", "Failures are bounded and observable."],
+                            [
+                                "A valid product request returns the approved response and persists the resulting state exactly once.",
+                                "Invalid or unauthorized requests make no state change and return the documented bounded failure.",
+                                "A persistence outage makes no partial state change and emits correlated diagnostic evidence."
+                            ],
                             ["Preserve unrelated public contracts."],
                             ["Add the versioned Product API and persistence port."],
                             [
-                                "Keep product policy in one cohesive component.",
-                                "Depend on the narrow application-owned persistence abstraction."
+                                "Define the versioned request, response, validation errors, and compatibility behavior at the Product API boundary.",
+                                "Add the narrow application-owned persistence port required by the approved behavior.",
+                                "Implement the product policy in one cohesive application component and keep infrastructure concerns out of it.",
+                                "Implement the persistence adapter with atomic failure behavior and wire it through the existing composition boundary.",
+                                "Add the reversible feature flag, correlated telemetry, and operator-facing rollback note."
                             ],
-                            ["Add focused unit, contract, and end-to-end tests."],
+                            [
+                                "Positive: verify a valid request completes end to end and persists the expected state exactly once.",
+                                "Negative: verify invalid and unauthorized inputs return the documented error without persistence calls.",
+                                "Failure: inject persistence unavailability and verify atomic failure with no partial state.",
+                                "Integration: exercise the versioned API through the real persistence adapter in an isolated test environment.",
+                                "Observability: verify the request correlation identifier appears in boundary and persistence diagnostics."
+                            ],
                             [],
                             "Use a reversible feature flag; disable it to roll back.",
                             5)

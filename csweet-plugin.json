@@ -4,7 +4,7 @@
   "kind": "agent",
   "id": "com.csweet.software-architect",
   "name": "C-Sweet Software Architect",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "publisher": {
     "id": "com.csweet",
     "name": "C-Sweet"
@@ -310,7 +310,7 @@
               "tests": { "$ref": "#/$defs/stringArray" },
               "dependencies": { "$ref": "#/$defs/stringArray" },
               "migrationAndRollback": { "type": "string" },
-              "estimatePoints": { "type": ["number", "null"], "minimum": 0, "maximum": 100 }
+              "estimatePoints": { "type": "number", "exclusiveMinimum": 0, "maximum": 100 }
             }
           },
           "sprint": {
@@ -398,6 +398,16 @@
           "accountableOrganizationUserId": { "type": "string", "format": "uuid" },
           "developerInstallationId": { "type": "string", "format": "uuid" },
           "qualityInstallationId": { "type": "string", "format": "uuid" },
+          "developerInstallationIds": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": { "type": "string", "format": "uuid" }
+          },
+          "qualityInstallationIds": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": { "type": "string", "format": "uuid" }
+          },
           "design": {
             "type": "object",
             "additionalProperties": false,
@@ -510,7 +520,7 @@
               "tests": { "$ref": "#/$defs/stringArray" },
               "dependencies": { "$ref": "#/$defs/stringArray" },
               "migrationAndRollback": { "type": "string" },
-              "estimatePoints": { "type": ["number", "null"], "minimum": 0, "maximum": 100 }
+              "estimatePoints": { "type": "number", "exclusiveMinimum": 0, "maximum": 100 }
             }
           },
           "sprint": {

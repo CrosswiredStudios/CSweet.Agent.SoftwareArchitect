@@ -7,7 +7,7 @@ This repository contains one standalone C-Sweet protocol-v2 agent. Its purpose i
 
 ## Invariants
 
-- Keep `com.csweet.software-architect` and version `0.3.2` synchronized between code, project,
+- Keep `com.csweet.software-architect` and version `0.3.3` synchronized between code, project,
   `csweet-plugin.json`, tests, documentation, and releases.
 - Follow the canonical `AGENT_AUTHORING.md` distributed with `CSweet.Agent.SDK`. Keep this
   repository independently buildable and never add a source-tree reference to the SDK checkout.
@@ -22,8 +22,10 @@ This repository contains one standalone C-Sweet protocol-v2 agent. Its purpose i
   curated read tools and the in-process plan-submission function.
 - Approved publication is deterministic typed C#. Never expose work-item, sprint, chat-send, or
   other mutation tools to the model.
-- The agent never starts or completes sprints, assigns developers, selects repositories, writes
-  code, merges, deploys, or publishes releases.
+- The model never assigns developers, and the agent never selects staff, starts or completes
+  sprints, selects repositories, writes code, merges, deploys, or publishes releases. Deterministic
+  approved publication may bind ticket stages only to Product Manager-authorized active assignment
+  pools.
 - Use only typed `AgentRuntimeContext.Platform` operations. Never implement MCP/JSON-RPC, inspect
   workload/session/lease tokens, access databases or Docker, or handle provider credentials.
 - Work and events are delivered at least once. Honor cancellation and use stable domain

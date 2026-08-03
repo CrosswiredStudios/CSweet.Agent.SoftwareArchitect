@@ -237,6 +237,10 @@ Product Manager: please reconcile these constraints with the product outcome and
         if (board.Board.IsArchived)
             return AgentWorkResult.Failure(
                 "The authorized board is archived and cannot accept architecture work.");
+        var assignmentPoolError = await ValidateAssignmentPoolsAsync(
+            input, board.Board, context, cancellationToken);
+        if (assignmentPoolError is not null)
+            return AgentWorkResult.Failure(assignmentPoolError);
         await context.ReportProgressAsync(
             new { stage = "publishing", message = "Publishing the approved architecture plan.", design.PlanId },
             cancellationToken);
@@ -257,6 +261,12 @@ Product Manager: please reconcile these constraints with the product outcome and
 
         var publishedSprints = new List<PublishedSprint>();
         var publishedTickets = new List<PublishedTicket>();
+        var developerPool = ArchitecturePlanPolicy.NormalizeAssignmentPool(
+            input.DeveloperInstallationIds, input.DeveloperInstallationId);
+        var qualityPool = ArchitecturePlanPolicy.NormalizeAssignmentPool(
+            input.QualityInstallationIds, input.QualityInstallationId);
+        var developerLoad = developerPool.ToDictionary(x => x, _ => 0m);
+        var qualityLoad = qualityPool.ToDictionary(x => x, _ => 0m);
         var sprintIds = new Dictionary<int, Guid>();
         var fallbackStart = NextMonday(design.PreparedAt);
         foreach (var sprintPlan in plan.Sprints.OrderBy(x => x.Ordinal))
@@ -304,6 +314,11 @@ Product Manager: please reconcile these constraints with the product outcome and
             {
                 var ticketPlan = entry.Ticket;
                 var ticketKey = NormalizeKey(ticketPlan.Key);
+                var estimatePoints = ticketPlan.EstimatePoints!.Value;
+                var developerInstallationId = ArchitecturePlanPolicy.AssignLeastLoaded(
+                    developerPool, developerLoad, estimatePoints);
+                var qualityInstallationId = ArchitecturePlanPolicy.AssignLeastLoaded(
+                    qualityPool, qualityLoad, estimatePoints);
                 var delivery = new WorkItemDeliverySpecification(
                     input.RepositoryConnectionId,
                     input.BaseBranch,
@@ -335,11 +350,11 @@ Product Manager: please reconcile these constraints with the product outcome and
                             new WorkStageAssignment(
                                 "development",
                                 WorkOrchestrationPrincipalKinds.AgentInstallation,
-                                AgentInstallationId: input.DeveloperInstallationId),
+                                AgentInstallationId: developerInstallationId),
                             new WorkStageAssignment(
                                 "quality",
                                 WorkOrchestrationPrincipalKinds.AgentInstallation,
-                                AgentInstallationId: input.QualityInstallationId),
+                                AgentInstallationId: qualityInstallationId),
                             new WorkStageAssignment(
                                 "merge-decision",
                                 WorkOrchestrationPrincipalKinds.BoardManager),
@@ -350,6 +365,8 @@ Product Manager: please reconcile these constraints with the product outcome and
                         ]
                     },
                     cancellationToken);
+                EnsureStableAgentAssignment(item, "development", developerInstallationId);
+                EnsureStableAgentAssignment(item, "quality", qualityInstallationId);
                 if (ticketPlan.EstimatePoints is not null)
                     item = await context.Platform.Work.EstimateAsync(
                         new EstimateWorkItemRequest(
@@ -394,6 +411,66 @@ Product Manager: please reconcile these constraints with the product outcome and
             },
             cancellationToken);
         return AgentWorkResult.Success(response);
+    }
+
+    private static async Task<string?> ValidateAssignmentPoolsAsync(
+        ArchitecturePublishRequest request,
+        WorkBoardSummary board,
+        AgentRuntimeContext context,
+        CancellationToken cancellationToken)
+    {
+        if (!board.TeamId.HasValue)
+            return "The architecture board is not assigned to an approved team.";
+        var roster = await context.Platform.ReadTeamRosterAsync(token: cancellationToken);
+        if (roster.Team is null || !Guid.TryParse(roster.Team.TeamId, out var rosterTeamId) ||
+            rosterTeamId != board.TeamId.Value)
+            return "The architecture board does not belong to the active approved team.";
+        var organization = await context.Platform.ReadOrganizationSnapshotAsync(cancellationToken);
+
+        IReadOnlySet<Guid> InstallationsFor(string role)
+        {
+            var employeeIds = roster.Team.Members
+                .Where(x => !x.Presence.Equals("Inactive", StringComparison.OrdinalIgnoreCase) &&
+                            NormalizeRole(x.TeamRole ?? x.CompanyRole ?? string.Empty) == NormalizeRole(role))
+                .Select(x => Guid.TryParse(x.EmployeeId, out var id) ? id : Guid.Empty)
+                .Where(x => x != Guid.Empty)
+                .ToHashSet();
+            return organization.People
+                .Where(x => employeeIds.Contains(x.Id) && x.IsActive && x.AgentInstallationId.HasValue)
+                .Select(x => x.AgentInstallationId!.Value)
+                .ToHashSet();
+        }
+
+        var architects = InstallationsFor("Software Architect");
+        if (architects.Count != 1)
+            return "The approved team must have exactly one designated active Software Architect.";
+        var allowedDevelopers = InstallationsFor("Software Developer");
+        var allowedQuality = InstallationsFor("Software QA");
+        var developers = ArchitecturePlanPolicy.NormalizeAssignmentPool(
+            request.DeveloperInstallationIds, request.DeveloperInstallationId);
+        var quality = ArchitecturePlanPolicy.NormalizeAssignmentPool(
+            request.QualityInstallationIds, request.QualityInstallationId);
+        if (developers.Any(x => !allowedDevelopers.Contains(x)))
+            return "The Developer assignment pool contains an installation outside the active approved team.";
+        if (quality.Any(x => !allowedQuality.Contains(x)))
+            return "The Software QA assignment pool contains an installation outside the active approved team.";
+        return null;
+    }
+
+    private static string NormalizeRole(string value) =>
+        new(value.Trim().ToLowerInvariant().Where(char.IsLetterOrDigit).ToArray());
+
+    private static void EnsureStableAgentAssignment(
+        WorkItem item,
+        string stageKey,
+        Guid expectedInstallationId)
+    {
+        var assignment = item.StageAssignments.SingleOrDefault(x =>
+            x.StageKey.Equals(stageKey, StringComparison.Ordinal));
+        if (assignment?.AgentInstallationId != expectedInstallationId)
+            throw new InvalidOperationException(
+                $"Ticket '{item.Identifier ?? item.Id.ToString("D")}' has a different persisted {stageKey} assignment. " +
+                "The approved assignment pool changed during an idempotent publication retry.");
     }
 
     private async Task<AgentWorkResult> ExecuteAssistantAsync(
@@ -571,6 +648,31 @@ plan is published as independently testable sprint increments and developer-read
             return;
         }
 
+        if (IsProductManagerKickoff(received.Message, senderId, organization))
+        {
+            var session = await context.Platform.Communication.StartCoordinationAsync(
+                new StartAgentCoordinationRequest(
+                    senderId,
+                    "Approved product-team release planning",
+                    received.Message.Trim(),
+                    [
+                        "Approved product requirements, priority, non-goals, and acceptance criteria are explicit.",
+                        "The architecture plan contains bounded sequential sprints and junior-ready independently testable tickets.",
+                        "Developer and QA stage assignments are valid and only the earliest sprint is actionable.",
+                        "Publication occurs only after repository, branch, and Product Manager approval gates are satisfied."
+                    ],
+                    received.Message.Trim(),
+                    conversationId,
+                    received.TurnId,
+                    received.MessageId,
+                    $"software-team-planning:{received.MessageId:N}"),
+                cancellationToken);
+            await PublishConversationResponseAsync(received,
+                $"I started the durable release-planning collaboration with the Product Manager. Session `{session.Id:D}` will draft before repository selection when possible, but will not publish or assign executable work until every governance gate is satisfied.",
+                context, cancellationToken);
+            return;
+        }
+
         if (IsProductManagerCollaborationRequest(received.Message))
         {
             var productManager = FindActiveProductManager(organization);
@@ -700,6 +802,22 @@ plan is published as independently testable sprint increments and developer-read
                         role.Contains("Product Manager", StringComparison.OrdinalIgnoreCase))
             .OrderBy(x => x.DisplayName, StringComparer.OrdinalIgnoreCase)
             .FirstOrDefault();
+    }
+
+    private static bool IsProductManagerKickoff(
+        string value,
+        Guid senderId,
+        OrganizationSnapshotResponse organization)
+    {
+        if (!value.Contains("<software_team_planning_kickoff>", StringComparison.Ordinal))
+            return false;
+        var sender = organization.People.SingleOrDefault(x =>
+            x.Id == senderId && x.IsActive && x.AgentInstallationId.HasValue &&
+            string.Equals(x.EmployeeType, "Agent", StringComparison.OrdinalIgnoreCase));
+        if (sender?.RoleId is not { } roleId)
+            return false;
+        var role = organization.Roles.SingleOrDefault(x => x.Id == roleId)?.Name;
+        return role?.Contains("Product Manager", StringComparison.OrdinalIgnoreCase) == true;
     }
 
     private static bool IsProductManagerCollaborationRequest(string value)

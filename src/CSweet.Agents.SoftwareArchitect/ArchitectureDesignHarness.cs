@@ -219,7 +219,11 @@ in the returned draft. Use sequential {effectiveSprintLength}-day sprints.
 
 Each sprint must deliver a coherent, demonstrable vertical increment. Each Story or Task must be
 independently implementable and include requirements, acceptance criteria, tests, dependencies,
-interface/data guidance, SOLID guidance where relevant, and migration/rollback behavior.
+explicit interface/data guidance, ordered implementation steps, SOLID guidance where relevant,
+and migration/rollback behavior. Write for a junior developer: no ticket may leave an architecture
+decision to its implementer. Include a positive estimate and concrete positive, negative, failure,
+integration, and observability verification where each is relevant. If a ticket has no interface,
+data, migration, or rollback change, say so explicitly instead of leaving the field empty.
 
 Call submit_architecture_plan exactly once with the complete typed plan. Do not merely print JSON.
 

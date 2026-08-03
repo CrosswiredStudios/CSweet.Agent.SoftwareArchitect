@@ -166,6 +166,36 @@ public sealed class SoftwareArchitectAgentTests
     }
 
     [Fact]
+    public void Plan_RequiresJuniorReadyGuidanceAndPositiveEstimate()
+    {
+        var plan = ArchitecturePlanSamples.MinimalValidPlan();
+        var sprint = plan.Sprints[0];
+        var ticket = sprint.Tickets[0];
+
+        var missingGuidance = ArchitecturePlanPolicy.ValidatePlan(
+            plan with
+            {
+                Sprints = [sprint with
+                {
+                    Tickets = [ticket with { ImplementationGuidance = [] }]
+                }]
+            },
+            forPublication: false);
+        var missingEstimate = ArchitecturePlanPolicy.ValidatePlan(
+            plan with
+            {
+                Sprints = [sprint with
+                {
+                    Tickets = [ticket with { EstimatePoints = 0 }]
+                }]
+            },
+            forPublication: false);
+
+        Assert.Contains("ordered implementation guidance", missingGuidance, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("greater than 0", missingEstimate, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task Publish_CreatesEpicSprintTicketEstimateAndScopeDeterministically()
     {
         var design = FinalizedDesign(ArchitecturePlanSamples.MinimalValidPlan());
@@ -176,10 +206,35 @@ public sealed class SoftwareArchitectAgentTests
         var estimateRequests = new List<EstimateWorkItemRequest>();
         var scopeRequests = new List<SetWorkItemSprintRequest>();
         var sprintRequests = new List<CreateWorkSprintRequest>();
+        var architectEmployeeId = Guid.NewGuid();
+        var developerEmployeeId = Guid.NewGuid();
+        var qualityEmployeeId = Guid.NewGuid();
+        var architectInstallationId = Guid.NewGuid();
         var runtime = new AgentTestRuntime()
             .RegisterCapability<WorkBoardReference, WorkBoardDetail>(
                 WorkItemCapabilities.Read,
                 (_, _) => Task.FromResult(board))
+            .RegisterCapability<TeamRosterRequest, TeamRosterResponse>(
+                PlatformCapabilities.TeamRosterRead,
+                (_, _) => Task.FromResult(new TeamRosterResponse(new AgentTeamContext(
+                    board.Board.TeamId!.Value.ToString("D"), "product", "Product Team", 1,
+                    Guid.NewGuid().ToString("D"), "Product Manager",
+                    [
+                        new AgentTeammate(architectEmployeeId.ToString("D"), "Architect", "Agent", null, "Software Architect", "Peer", "Active"),
+                        new AgentTeammate(developerEmployeeId.ToString("D"), "Developer", "Agent", null, "Software Developer", "Peer", "Active"),
+                        new AgentTeammate(qualityEmployeeId.ToString("D"), "QA", "Agent", null, "Software QA", "Peer", "Active")
+                    ], [], 3, false))))
+            .RegisterCapability<object, OrganizationSnapshotResponse>(
+                PlatformCapabilities.OrganizationSnapshotRead,
+                (_, _) => Task.FromResult(new OrganizationSnapshotResponse(
+                    Guid.NewGuid(), "Active",
+                    [
+                        new OrganizationPerson(architectEmployeeId, "Architect", "Agent", null, null, architectInstallationId, true),
+                        new OrganizationPerson(developerEmployeeId, "Developer", "Agent", null, null,
+                            Guid.Parse("dddddddd-dddd-dddd-dddd-dddddddddddd"), true),
+                        new OrganizationPerson(qualityEmployeeId, "QA", "Agent", null, null,
+                            Guid.Parse("eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee"), true)
+                    ], [], [], [], [], DateTimeOffset.UtcNow)))
             .RegisterCapability<CreateWorkItemRequest, WorkItem>(
                 WorkItemCapabilities.Create,
                 (request, _) =>
@@ -192,7 +247,12 @@ public sealed class SoftwareArchitectAgentTests
                             request.Kind,
                             request.Title,
                             request.Description ?? string.Empty,
-                            request.ParentItemId);
+                            request.ParentItemId) with
+                        {
+                            Delivery = request.Delivery,
+                            AccountableOrganizationUserId = request.AccountableOrganizationUserId,
+                            StageAssignments = request.StageAssignments
+                        };
                         itemKeys.Add(request.IdempotencyKey, item);
                     }
                     return Task.FromResult(item);
@@ -271,6 +331,9 @@ public sealed class SoftwareArchitectAgentTests
         Assert.Equal(WorkItemKinds.Story, createRequests[1].Kind);
         Assert.Contains("## Context", createRequests[1].Description);
         Assert.Contains("## Acceptance criteria", createRequests[1].Description);
+        Assert.Contains("## Ordered implementation guidance", createRequests[1].Description);
+        Assert.Contains("Negative:", createRequests[1].Description);
+        Assert.Contains("Observability:", createRequests[1].Description);
         Assert.Contains("## Migration and rollback", createRequests[1].Description);
         Assert.Equal(
             Guid.Parse("cccccccc-cccc-cccc-cccc-cccccccccccc"),
@@ -288,6 +351,48 @@ public sealed class SoftwareArchitectAgentTests
         Assert.Contains(createRequests[1].StageAssignments, x =>
             x.StageKey == "governed-merge" &&
             x.PlatformAction == "git.merge.qa-approved.v1");
+
+        var writesBeforeInvalidPool = createRequests.Count;
+        var invalidPool = ValidPublication(design) with
+        {
+            DeveloperInstallationIds = [Guid.NewGuid()]
+        };
+        var rejected = await runtime.ExecuteCapabilityAsync(
+            agent, SoftwareArchitectProfile.PublishCapability, invalidPool);
+        Assert.False(rejected.Succeeded);
+        Assert.Contains("outside the active approved team", rejected.Error, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(writesBeforeInvalidPool, createRequests.Count);
+    }
+
+    [Fact]
+    public void AssignmentPools_BalanceDeveloperAndQaEstimatesDeterministicallyAcrossRetries()
+    {
+        var developerOne = Guid.Parse("10000000-0000-0000-0000-000000000000");
+        var developerTwo = Guid.Parse("20000000-0000-0000-0000-000000000000");
+        var qualityOne = Guid.Parse("30000000-0000-0000-0000-000000000000");
+        var qualityTwo = Guid.Parse("40000000-0000-0000-0000-000000000000");
+
+        IReadOnlyList<(Guid Developer, Guid Quality)> Assign()
+        {
+            var developers = ArchitecturePlanPolicy.NormalizeAssignmentPool(
+                [developerTwo, developerOne], Guid.Empty);
+            var quality = ArchitecturePlanPolicy.NormalizeAssignmentPool(
+                [qualityTwo, qualityOne], Guid.Empty);
+            var developerLoad = developers.ToDictionary(x => x, _ => 0m);
+            var qualityLoad = quality.ToDictionary(x => x, _ => 0m);
+            return new decimal[] { 5, 3, 2 }
+                .Select(points => (
+                    ArchitecturePlanPolicy.AssignLeastLoaded(developers, developerLoad, points),
+                    ArchitecturePlanPolicy.AssignLeastLoaded(quality, qualityLoad, points)))
+                .ToList();
+        }
+
+        var firstAttempt = Assign();
+        var retry = Assign();
+        Assert.Equal(firstAttempt, retry);
+        Assert.Equal(
+            [(developerOne, qualityOne), (developerTwo, qualityTwo), (developerTwo, qualityTwo)],
+            firstAttempt);
     }
 
     [Fact]
@@ -552,6 +657,73 @@ public sealed class SoftwareArchitectAgentTests
     }
 
     [Fact]
+    public async Task AuthenticatedProductManagerKickoffStartsDurableReleasePlanning()
+    {
+        var organizationId = Guid.NewGuid();
+        var productManagerId = Guid.NewGuid();
+        var productManagerInstallationId = Guid.NewGuid();
+        var productManagerRoleId = Guid.NewGuid();
+        var architectId = Guid.NewGuid();
+        var architectInstallationId = Guid.NewGuid();
+        var conversationId = Guid.NewGuid();
+        var messageId = Guid.NewGuid();
+        var turnId = Guid.NewGuid();
+        StartAgentCoordinationRequest? started = null;
+        var kickoff = """
+<software_team_planning_kickoff>
+Board: Product Delivery
+Approved product goal: Ship the first release.
+</software_team_planning_kickoff>
+""";
+        var runtime = new AgentTestRuntime()
+            .RegisterCapability<object, CommunicationMessages>(
+                CommunicationCapabilities.ChatRead,
+                (_, _) => Task.FromResult(new CommunicationMessages(
+                [
+                    new CommunicationMessage(messageId, 1, conversationId, productManagerId,
+                        "Product Manager", "Agent", kickoff, DateTimeOffset.UtcNow, turnId)
+                ])))
+            .RegisterCapability<object, OrganizationSnapshotResponse>(
+                PlatformCapabilities.OrganizationSnapshotRead,
+                (_, _) => Task.FromResult(new OrganizationSnapshotResponse(
+                    organizationId, "Active",
+                    [
+                        new OrganizationPerson(productManagerId, "Product Manager", "Agent",
+                            productManagerRoleId, null, productManagerInstallationId, true),
+                        new OrganizationPerson(architectId, "Architect", "Agent",
+                            null, productManagerId, architectInstallationId, true)
+                    ],
+                    [new OrganizationRole(productManagerRoleId, "Software Product Manager", "Owns outcomes.", "[]")],
+                    [], [], [], DateTimeOffset.UtcNow)))
+            .RegisterCapability<StartAgentCoordinationRequest, AgentCoordinationSession>(
+                CommunicationCapabilities.CoordinationStart,
+                (request, _) =>
+                {
+                    started = request;
+                    var now = DateTimeOffset.UtcNow;
+                    return Task.FromResult(new AgentCoordinationSession(
+                        Guid.NewGuid(), Guid.NewGuid(), conversationId, turnId, messageId,
+                        new AgentCoordinationParticipant(architectId, architectInstallationId, "Architect", "Software Architect"),
+                        new AgentCoordinationParticipant(productManagerId, productManagerInstallationId, "Product Manager", "Software Product Manager"),
+                        request.Subject, request.Objective, request.SuccessCriteria,
+                        AgentCoordinationStatuses.Active, 1, 1, productManagerId, false, null,
+                        now, now, []));
+                });
+
+        await runtime.DeliverEventAsync(
+            new SoftwareArchitectAgent(),
+            SoftwareArchitectProfile.UserMessageReceivedEvent,
+            new UserMessageReceived(
+                Guid.NewGuid(), conversationId.ToString("D"), productManagerId.ToString("D"),
+                kickoff, null, turnId, 0, messageId));
+
+        Assert.NotNull(started);
+        Assert.Equal(productManagerId, started!.TargetOrganizationUserId);
+        Assert.Contains("junior-ready", started.SuccessCriteria[1], StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("draft", runtime.Progress[0].GetProperty("delta").GetString(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task OnboardingFindsProductManagerAndUsesStableConversationEffectKeys()
     {
         var organizationId = Guid.NewGuid();
@@ -697,7 +869,10 @@ public sealed class SoftwareArchitectAgentTests
 
     private static WorkBoardDetail Board(Guid boardId) =>
         new(
-            new WorkBoardSummary(boardId, "Product Team", "Approved board", false, false, 1, []),
+            new WorkBoardSummary(boardId, "Product Team", "Approved board", false, false, 1, [])
+            {
+                TeamId = Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")
+            },
             [new WorkBoardColumn(Guid.NewGuid(), "To Do", "ToDo", 0, "None", null)],
             []);
 
