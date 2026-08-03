@@ -73,7 +73,10 @@ public sealed class ManifestTests
                 WorkSprintCapabilities.Read,
                 WorkSprintCapabilities.Create,
                 WorkSprintCapabilities.ManageScope,
-                WorkSprintCapabilities.ReadReports
+                WorkSprintCapabilities.ReadReports,
+                GitMergeCapabilities.Review,
+                GitMergeCapabilities.Authorize,
+                SourceControlCapabilities.ProvisionRepository
             ],
             required);
         Assert.Empty(root.GetProperty("credentials").EnumerateArray());

@@ -320,8 +320,7 @@ Product Manager: please reconcile these constraints with the product outcome and
                 var qualityInstallationId = ArchitecturePlanPolicy.AssignLeastLoaded(
                     qualityPool, qualityLoad, estimatePoints);
                 var delivery = new WorkItemDeliverySpecification(
-                    input.RepositoryConnectionId,
-                    input.BaseBranch,
+                    input.RepositoryId,
                     ticketPlan.Requirements,
                     ticketPlan.AcceptanceCriteria,
                     ticketPlan.Constraints.Concat(
@@ -361,7 +360,7 @@ Product Manager: please reconcile these constraints with the product outcome and
                             new WorkStageAssignment(
                                 "governed-merge",
                                 WorkOrchestrationPrincipalKinds.PlatformAction,
-                                PlatformAction: "git.merge.qa-approved.v1")
+                                PlatformAction: "source-control.merge.execute.v2")
                         ]
                     },
                     cancellationToken);

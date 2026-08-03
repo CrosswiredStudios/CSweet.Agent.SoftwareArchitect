@@ -4,7 +4,7 @@
   "kind": "agent",
   "id": "com.csweet.software-architect",
   "name": "C-Sweet Software Architect",
-  "version": "0.3.3",
+  "version": "0.4.0",
   "publisher": {
     "id": "com.csweet",
     "name": "C-Sweet"
@@ -387,13 +387,12 @@
         "additionalProperties": false,
         "required": [
           "boardId", "design", "approval", "idempotencyKey",
-          "repositoryConnectionId", "baseBranch", "firstSprintSequence",
+          "repositoryId", "firstSprintSequence",
           "accountableOrganizationUserId", "developerInstallationId", "qualityInstallationId"
         ],
         "properties": {
           "boardId": { "type": "string", "format": "uuid" },
-          "repositoryConnectionId": { "type": "string", "format": "uuid" },
-          "baseBranch": { "type": "string", "minLength": 1, "maxLength": 256 },
+          "repositoryId": { "type": "string", "format": "uuid" },
           "firstSprintSequence": { "type": "integer", "minimum": 1 },
           "accountableOrganizationUserId": { "type": "string", "format": "uuid" },
           "developerInstallationId": { "type": "string", "format": "uuid" },
@@ -776,6 +775,21 @@
       "name": "work.sprint.report.read",
       "scope": "board",
       "purpose": "Use historical sprint evidence without inventing velocity or capacity"
+    },
+    {
+      "name": "git.merge.review.v2",
+      "scope": "work-item",
+      "purpose": "Review the exact candidate SHA and QA evidence when this Architect is the canonical team lead"
+    },
+    {
+      "name": "git.merge.authorize.v2",
+      "scope": "work-item",
+      "purpose": "Approve or reject only the exact reviewed SHA when this Architect is the canonical team lead"
+    },
+    {
+      "name": "source-control.repository.provision.v2",
+      "scope": "organization",
+      "purpose": "Request one policy-bounded private Managed GitHub project when explicitly granted"
     }
   ],
   "events": {

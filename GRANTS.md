@@ -1,6 +1,6 @@
 # Software Architect grants
 
-This document describes the minimum authority requested by package version `0.3.3`.
+This document describes the minimum authority requested by package version `0.4.0`.
 
 Durable collaboration uses `communication.coordination.start.v1`,
 `communication.coordination.respond.v1`, `communication.coordination.read.v1`, and
@@ -31,5 +31,14 @@ authoritative.
 - `work.item.create` and `work.item.estimate` publish approved developer-ready work.
 - `work.sprint.create` and `work.sprint.scope.manage` publish planned increments.
 
+## Source-control governance
+
+- `git.merge.review.v2` reads the exact candidate SHA, QA evidence, and current team policy when
+  this installation represents the canonical team lead.
+- `git.merge.authorize.v2` records an expiring approve-or-reject decision for that exact SHA; it
+  does not give the agent Git credentials or direct merge authority.
+- `source-control.repository.provision.v2` requests a policy-bounded private Managed GitHub
+  repository. The trusted provisioner—not this agent—owns provider credentials.
+
 The package does not request item assignment or transition, sprint lifecycle, board creation,
-automation, Git workspace, credential, network, database, deployment, or release authority.
+Git workspace, credential, provider API, network, database, deployment, or release authority.

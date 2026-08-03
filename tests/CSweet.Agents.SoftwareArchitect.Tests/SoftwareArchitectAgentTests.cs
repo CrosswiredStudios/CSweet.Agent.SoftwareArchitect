@@ -66,8 +66,7 @@ public sealed class SoftwareArchitectAgentTests
             new ArchitectureApproval("Engineering Lead", "Looks good.", DateTimeOffset.UtcNow),
             "publish-1")
         {
-            RepositoryConnectionId = Guid.NewGuid(),
-            BaseBranch = "main",
+            RepositoryId = Guid.NewGuid(),
             FirstSprintSequence = 1
         };
 
@@ -350,7 +349,7 @@ public sealed class SoftwareArchitectAgentTests
             x.PrincipalKind == WorkOrchestrationPrincipalKinds.BoardManager);
         Assert.Contains(createRequests[1].StageAssignments, x =>
             x.StageKey == "governed-merge" &&
-            x.PlatformAction == "git.merge.qa-approved.v1");
+            x.PlatformAction == "source-control.merge.execute.v2");
 
         var writesBeforeInvalidPool = createRequests.Count;
         var invalidPool = ValidPublication(design) with
@@ -859,8 +858,7 @@ Approved product goal: Ship the first release.
                 Guid.NewGuid()),
             "publish-1")
         {
-            RepositoryConnectionId = Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"),
-            BaseBranch = "main",
+            RepositoryId = Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"),
             FirstSprintSequence = 1,
             AccountableOrganizationUserId = Guid.Parse("cccccccc-cccc-cccc-cccc-cccccccccccc"),
             DeveloperInstallationId = Guid.Parse("dddddddd-dddd-dddd-dddd-dddddddddddd"),

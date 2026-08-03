@@ -245,10 +245,8 @@ internal static class ArchitecturePlanPolicy
             return "Approval rationale is required.";
         if (request.Approval.ApprovedAt == default)
             return "Approval time is required.";
-        if (request.RepositoryConnectionId == Guid.Empty)
-            return "repositoryConnectionId is required for developer-ready tickets.";
-        if (string.IsNullOrWhiteSpace(request.BaseBranch))
-            return "baseBranch is required for developer-ready tickets.";
+        if (request.RepositoryId == Guid.Empty)
+            return "repositoryId is required for developer-ready tickets.";
         if (request.FirstSprintSequence <= 0)
             return "firstSprintSequence must be positive.";
         if (request.AccountableOrganizationUserId == Guid.Empty)
