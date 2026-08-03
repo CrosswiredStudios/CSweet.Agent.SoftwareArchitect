@@ -105,6 +105,36 @@ public sealed class SoftwareArchitectAgent : CSweetAgentBase
             await HandleConversationMessageAsync(message, context, cancellationToken);
     }
 
+    public override Task<AgentCoordinationTurnResult> HandleCoordinationTurnAsync(
+        AgentCoordinationTurnRequest request,
+        AgentRuntimeContext context,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var latest = request.Transcript.OrderByDescending(x => x.Ordinal).FirstOrDefault();
+        if (request.IsFinalization)
+        {
+            var outcome = latest?.Disposition == AgentCoordinationDispositions.Blocked
+                ? "blocked" : "completed";
+            return Task.FromResult(AgentCoordinationTurnResult.Completed($"""
+Collaboration {outcome}: {request.Objective}
+
+Result: {latest?.Content ?? "No terminal detail was supplied."}
+Confirmed actions: the Product Manager owns the requirements, acceptance criteria, priorities, and board reconciliation; the Architect supplied technical boundaries, dependencies, quality attributes, and developer-ready guidance. No authority or grant was transferred between agents.
+"""));
+        }
+
+        return Task.FromResult(AgentCoordinationTurnResult.Continue($"""
+Technical direction for **{request.Subject}**:
+
+- Preserve the existing approval, repository-selection, and publication gates. Model the work as idempotent, independently testable increments with explicit dependency order and rollback behavior.
+- Tickets must include concrete requirements, acceptance criteria, affected boundary or contract, quality and failure expectations, dependencies, and verification evidence. Do not assign implementation until the repository and base branch are approved.
+- Treat the latest product guidance as authoritative: {latest?.Content ?? "No additional product guidance was provided."}
+
+Product Manager: please reconcile these constraints with the product outcome and kanban board, then either mark the plan decision-ready or identify the single missing product decision or permission.
+"""));
+    }
+
     protected override async Task<AgentWorkResult> ExecuteCapabilityCoreAsync(
         AgentCapabilityRequest request,
         AgentRuntimeContext context,
@@ -473,20 +503,14 @@ work-board mutations from conversation.
             throw new InvalidOperationException(
                 "The Software Architect could not identify an accountable Product or Project Manager.");
 
-        var chat = await context.Platform.InvokeAsync<
-            CreateCommunicationChatRequest,
-            CommunicationHubActionResponse>(
-            SoftwareArchitectCapabilities.ChatCreate,
-            new CreateCommunicationChatRequest(
+        var chat = await context.Platform.Communication.CreateChatAsync(
+            new CreateCommunicationChat(
                 null,
                 "Private Software Architect planning conversation.",
                 true,
                 true,
                 [target.Id]),
             cancellationToken);
-        if (!chat.Succeeded || chat.Chat is null)
-            throw new InvalidOperationException(
-                $"The Software Architect could not open its manager conversation: {chat.Message}");
 
         var objective = organization.Objectives
             .FirstOrDefault(x => x.Status is not ("Completed" or "Cancelled"));
@@ -508,14 +532,10 @@ design capability with the approved product outcome and acceptance criteria once
 repository and base branch are selected. I will return unresolved product decisions before any
 plan is published as independently testable sprint increments and developer-ready tickets.
 """;
-        _ = await context.Platform.InvokeAsync<
-            SendCommunicationMessageRequest,
-            CommunicationHubActionResponse>(
-            SoftwareArchitectCapabilities.MessageSend,
-            new SendCommunicationMessageRequest(
-                chat.Chat.Id,
-                opening,
-                $"software-architect:onboarding:{message.EventId:N}"),
+        _ = await context.Platform.Communication.SendMessageAsync(
+            chat.Id,
+            opening,
+            $"software-architect:onboarding:{message.EventId:N}",
             cancellationToken);
         _ = await context.Platform.Lifecycle.CompleteOnboardingAsync(message, cancellationToken);
     }
@@ -530,28 +550,59 @@ plan is published as independently testable sprint increments and developer-read
             !Guid.TryParse(received.ConversationId, out var conversationId))
             return;
 
-        if (IsAcknowledgement(received.Message))
-        {
-            await PublishConversationResponseAsync(
-                received,
-                "Acknowledged.",
-                context,
-                cancellationToken);
-            return;
-        }
-
-        var transcript = await context.Platform.InvokeAsync<
-            ReadCommunicationChatRequest,
-            ReadCommunicationChatResponse>(
-            SoftwareArchitectCapabilities.ChatRead,
-            new ReadCommunicationChatRequest(conversationId),
-            cancellationToken);
+        var transcript = await context.Platform.Communication.ReadChatAsync(
+            conversationId, cancellationToken);
         var sourceMessage = transcript.Messages.SingleOrDefault(x => x.Id == received.MessageId);
         if (sourceMessage?.SenderOrganizationUserId is not { } senderId)
             return;
         var organization = await context.Platform.ReadOrganizationSnapshotAsync(cancellationToken);
         if (!IsAuthorizedPlanningParticipant(senderId, organization, context.Identity))
+        {
+            await PublishConversationResponseAsync(received,
+                "I couldn't accept that request because the sender is not an active participant in this organization.",
+                context, cancellationToken);
             return;
+        }
+
+        if (IsAcknowledgement(received.Message))
+        {
+            await PublishConversationResponseAsync(
+                received, "Acknowledged.", context, cancellationToken);
+            return;
+        }
+
+        if (IsProductManagerCollaborationRequest(received.Message))
+        {
+            var productManager = FindActiveProductManager(organization);
+            if (productManager is null)
+            {
+                await PublishConversationResponseAsync(received,
+                    "I couldn't start collaboration because there is no active Product Manager agent in this organization.",
+                    context, cancellationToken);
+                return;
+            }
+
+            var session = await context.Platform.Communication.StartCoordinationAsync(
+                new StartAgentCoordinationRequest(
+                    productManager.Id,
+                    "Architect and Product Manager delivery planning",
+                    received.Message.Trim(),
+                    [
+                        "Product requirements, priority, and acceptance criteria are explicit.",
+                        "Technical decisions, dependencies, quality attributes, and developer-ready guidance are explicit.",
+                        "The kanban board is reconciled or a truthful blocker identifies the missing decision or grant."
+                    ],
+                    received.Message.Trim(),
+                    conversationId,
+                    received.TurnId,
+                    received.MessageId,
+                    $"software-architect:product-manager:{received.MessageId:N}"),
+                cancellationToken);
+            await PublishConversationResponseAsync(received,
+                $"I started a private collaboration with {productManager.DisplayName}. I'll post one concise result here when it completes or blocks. Session `{session.Id:D}`.",
+                context, cancellationToken);
+            return;
+        }
 
         var response = await GenerateConversationResponseAsync(
             new AssistantCapabilityInput(
@@ -636,8 +687,26 @@ plan is published as independently testable sprint increments and developer-read
             return false;
         if (Guid.TryParse(identity?.ManagerEmployeeId, out var managerId) && managerId == senderId)
             return true;
+        return true;
+    }
+
+    private static OrganizationPerson? FindActiveProductManager(OrganizationSnapshotResponse organization)
+    {
         var roleNames = organization.Roles.ToDictionary(x => x.Id, x => x.Name);
-        return IsPlanningManager(sender, roleNames);
+        return organization.People
+            .Where(x => x.IsActive && x.AgentInstallationId.HasValue &&
+                        string.Equals(x.EmployeeType, "Agent", StringComparison.OrdinalIgnoreCase))
+            .Where(x => x.RoleId.HasValue && roleNames.TryGetValue(x.RoleId.Value, out var role) &&
+                        role.Contains("Product Manager", StringComparison.OrdinalIgnoreCase))
+            .OrderBy(x => x.DisplayName, StringComparer.OrdinalIgnoreCase)
+            .FirstOrDefault();
+    }
+
+    private static bool IsProductManagerCollaborationRequest(string value)
+    {
+        if (!value.Contains("Product Manager", StringComparison.OrdinalIgnoreCase)) return false;
+        return new[] { "collaborat", "reach out", "talk to", "speak to", "coordinate", "work with", "ask", "tell" }
+            .Any(x => value.Contains(x, StringComparison.OrdinalIgnoreCase));
     }
 
     private static bool IsPlanningManager(

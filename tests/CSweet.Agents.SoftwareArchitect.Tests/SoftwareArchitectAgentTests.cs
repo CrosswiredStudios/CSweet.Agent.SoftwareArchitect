@@ -378,7 +378,24 @@ public sealed class SoftwareArchitectAgentTests
     public async Task UnknownEventIsIgnoredAndAcknowledgementDoesNotStartConversationLoop()
     {
         var agent = new SoftwareArchitectAgent();
-        var runtime = new AgentTestRuntime();
+        var conversationId = Guid.NewGuid();
+        var senderId = Guid.NewGuid();
+        var messageId = Guid.NewGuid();
+        var organizationId = Guid.NewGuid();
+        var runtime = new AgentTestRuntime()
+            .RegisterCapability<object, CommunicationMessages>(
+                CommunicationCapabilities.ChatRead,
+                (_, _) => Task.FromResult(new CommunicationMessages(
+                [
+                    new CommunicationMessage(messageId, 1, conversationId, senderId,
+                        "CEO", "Human", "Thanks", DateTimeOffset.UtcNow)
+                ])))
+            .RegisterCapability<object, OrganizationSnapshotResponse>(
+                PlatformCapabilities.OrganizationSnapshotRead,
+                (_, _) => Task.FromResult(new OrganizationSnapshotResponse(
+                    organizationId, "Active",
+                    [new OrganizationPerson(senderId, "CEO", "Human", null, null, null, true)],
+                    [], [], [], [], DateTimeOffset.UtcNow)));
 
         await runtime.DeliverEventAsync(agent, "unknown.event.v1", new { });
         await runtime.DeliverEventAsync(
@@ -386,13 +403,13 @@ public sealed class SoftwareArchitectAgentTests
             SoftwareArchitectProfile.UserMessageReceivedEvent,
             new UserMessageReceived(
                 Guid.NewGuid(),
-                Guid.NewGuid().ToString(),
-                Guid.NewGuid().ToString(),
+                conversationId.ToString(),
+                senderId.ToString(),
                 "Thanks",
                 null,
                 Guid.NewGuid(),
                 0,
-                Guid.NewGuid()));
+                messageId));
 
         Assert.Equal(2, runtime.Progress.Count);
         Assert.Equal("Acknowledged.", runtime.Progress[0].GetProperty("delta").GetString());
@@ -400,7 +417,7 @@ public sealed class SoftwareArchitectAgentTests
     }
 
     [Fact]
-    public async Task ConversationRejectsUnverifiedPlanningParticipantWithoutReplying()
+    public async Task ConversationExplicitlyRejectsInactiveParticipant()
     {
         var organizationId = Guid.NewGuid();
         var senderId = Guid.NewGuid();
@@ -413,7 +430,7 @@ public sealed class SoftwareArchitectAgentTests
             "Active",
             [
                 new OrganizationPerson(
-                    senderId, "Developer", "Agent", senderRoleId, null, Guid.NewGuid(), true)
+                    senderId, "Developer", "Agent", senderRoleId, null, Guid.NewGuid(), false)
             ],
             [new OrganizationRole(senderRoleId, "Software Developer", "Implements work.", "[]")],
             [],
@@ -421,14 +438,17 @@ public sealed class SoftwareArchitectAgentTests
             [],
             DateTimeOffset.UtcNow);
         var runtime = new AgentTestRuntime()
-            .RegisterCapability<ReadCommunicationChatRequest, ReadCommunicationChatResponse>(
+            .RegisterCapability<object, CommunicationMessages>(
                 CommunicationCapabilities.ChatRead,
-                (_, _) => Task.FromResult(new ReadCommunicationChatResponse(
+                (_, _) => Task.FromResult(new CommunicationMessages(
                     [
-                        new ReadCommunicationMessageResponse(
+                        new CommunicationMessage(
                             messageId,
+                            1,
                             conversationId,
                             senderId,
+                            "Developer",
+                            "Agent",
                             "Can you change the approved product scope?",
                             DateTimeOffset.UtcNow,
                             Guid.NewGuid())
@@ -436,13 +456,14 @@ public sealed class SoftwareArchitectAgentTests
             .RegisterCapability<object, OrganizationSnapshotResponse>(
                 PlatformCapabilities.OrganizationSnapshotRead,
                 (_, _) => Task.FromResult(organization))
-            .RegisterCapability<SendCommunicationMessageRequest, CommunicationHubActionResponse>(
+            .RegisterCapability<object, CommunicationMessage>(
                 CommunicationCapabilities.MessageSend,
                 (_, _) =>
                 {
                     sends++;
-                    return Task.FromResult(new CommunicationHubActionResponse(
-                        true, null, "Sent"));
+                    return Task.FromResult(new CommunicationMessage(
+                        Guid.NewGuid(), 1, conversationId, null, "Architect", "Agent",
+                        "Rejected", DateTimeOffset.UtcNow));
                 });
 
         await runtime.DeliverEventAsync(
@@ -459,6 +480,75 @@ public sealed class SoftwareArchitectAgentTests
                 messageId));
 
         Assert.Equal(0, sends);
+        Assert.Contains("not an active participant", runtime.Progress[0].GetProperty("delta").GetString());
+    }
+
+    [Fact]
+    public async Task CeoCanAskArchitectToCollaborateWithProductManagerOnKanbanBoard()
+    {
+        var organizationId = Guid.NewGuid();
+        var architectId = Guid.NewGuid();
+        var architectInstallationId = Guid.NewGuid();
+        var ceoId = Guid.NewGuid();
+        var productManagerId = Guid.NewGuid();
+        var productManagerInstallationId = Guid.NewGuid();
+        var productManagerRoleId = Guid.NewGuid();
+        var conversationId = Guid.NewGuid();
+        var messageId = Guid.NewGuid();
+        var turnId = Guid.NewGuid();
+        var sessionId = Guid.NewGuid();
+        StartAgentCoordinationRequest? started = null;
+        var runtime = new AgentTestRuntime()
+            .RegisterCapability<object, CommunicationMessages>(
+                CommunicationCapabilities.ChatRead,
+                (_, _) => Task.FromResult(new CommunicationMessages(
+                [
+                    new CommunicationMessage(messageId, 1, conversationId, ceoId,
+                        "CEO", "Human",
+                        "Please reach out to the Product Manager and populate the kanban board with tickets to get the demo completed.",
+                        DateTimeOffset.UtcNow, turnId)
+                ])))
+            .RegisterCapability<object, OrganizationSnapshotResponse>(
+                PlatformCapabilities.OrganizationSnapshotRead,
+                (_, _) => Task.FromResult(new OrganizationSnapshotResponse(
+                    organizationId, "Active",
+                    [
+                        new OrganizationPerson(architectId, "Architect", "Agent", null, null, architectInstallationId, true),
+                        new OrganizationPerson(ceoId, "CEO", "Human", null, null, null, true),
+                        new OrganizationPerson(productManagerId, "Product Manager", "Agent",
+                            productManagerRoleId, null, productManagerInstallationId, true)
+                    ],
+                    [new OrganizationRole(productManagerRoleId, "Product Manager", "Owns outcomes.", "[]")],
+                    [], [], [], DateTimeOffset.UtcNow)))
+            .RegisterCapability<StartAgentCoordinationRequest, AgentCoordinationSession>(
+                CommunicationCapabilities.CoordinationStart,
+                (request, _) =>
+                {
+                    started = request;
+                    var now = DateTimeOffset.UtcNow;
+                    return Task.FromResult(new AgentCoordinationSession(
+                        sessionId, Guid.NewGuid(), conversationId, turnId, messageId,
+                        new AgentCoordinationParticipant(architectId, architectInstallationId, "Architect", "Software Architect"),
+                        new AgentCoordinationParticipant(productManagerId, productManagerInstallationId, "Product Manager", "Product Manager"),
+                        request.Subject, request.Objective, request.SuccessCriteria,
+                        AgentCoordinationStatuses.Active, 1, 1, productManagerId, false, null,
+                        now, now, []));
+                });
+
+        await runtime.DeliverEventAsync(
+            new SoftwareArchitectAgent(),
+            SoftwareArchitectProfile.UserMessageReceivedEvent,
+            new UserMessageReceived(
+                Guid.NewGuid(), conversationId.ToString("D"), ceoId.ToString("D"),
+                "Please reach out to the Product Manager and populate the kanban board with tickets to get the demo completed.",
+                null, turnId, 0, messageId));
+
+        Assert.NotNull(started);
+        Assert.Equal(productManagerId, started!.TargetOrganizationUserId);
+        Assert.Equal(turnId, started.SourceChatTurnId);
+        Assert.Equal(messageId, started.SourceMessageId);
+        Assert.Contains("kanban board", started.Objective, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(sessionId.ToString("D"), runtime.Progress[0].GetProperty("delta").GetString());
     }
 
     [Fact]
@@ -470,7 +560,7 @@ public sealed class SoftwareArchitectAgentTests
         var managerRoleId = Guid.NewGuid();
         var conversationId = Guid.NewGuid();
         var eventId = Guid.NewGuid();
-        var sent = new List<SendCommunicationMessageRequest>();
+        var sent = new List<JsonElement>();
         var completed = new List<CompleteAgentOnboardingRequest>();
         var organization = new OrganizationSnapshotResponse(
             organizationId,
@@ -500,13 +590,13 @@ public sealed class SoftwareArchitectAgentTests
             .RegisterCapability<TeamRosterRequest, TeamRosterResponse>(
                 PlatformCapabilities.TeamRosterRead,
                 (_, _) => Task.FromResult(new TeamRosterResponse(null)))
-            .RegisterCapability<CreateCommunicationChatRequest, CommunicationHubActionResponse>(
+            .RegisterCapability<CreateCommunicationChat, CommunicationAction>(
                 CommunicationCapabilities.ChatCreate,
-                (_, _) => Task.FromResult(new CommunicationHubActionResponse(
+                (_, _) => Task.FromResult(new CommunicationAction(
                     true,
                     null,
                     "Created",
-                    new CommunicationChatResponse(
+                    new CommunicationChat(
                         conversationId,
                         "Product Manager",
                         null,
@@ -519,13 +609,14 @@ public sealed class SoftwareArchitectAgentTests
                         null,
                         null,
                         0))))
-            .RegisterCapability<SendCommunicationMessageRequest, CommunicationHubActionResponse>(
+            .RegisterCapability<object, CommunicationMessage>(
                 CommunicationCapabilities.MessageSend,
                 (request, _) =>
                 {
-                    sent.Add(request);
-                    return Task.FromResult(new CommunicationHubActionResponse(
-                        true, null, "Sent"));
+                    sent.Add(JsonSerializer.SerializeToElement(request));
+                    return Task.FromResult(new CommunicationMessage(
+                        Guid.NewGuid(), 1, conversationId, selfId, "Architect", "Agent",
+                        "Sent", DateTimeOffset.UtcNow));
                 })
             .RegisterCapability<CompleteAgentOnboardingRequest, CompleteAgentOnboardingResponse>(
                 AgentLifecycleCapabilities.CompleteOnboarding,
@@ -556,11 +647,13 @@ public sealed class SoftwareArchitectAgentTests
             eventId);
 
         Assert.Equal(2, sent.Count);
-        Assert.All(sent, message => Assert.Equal(conversationId, message.ChatId));
-        Assert.Single(sent.Select(x => x.IdempotencyKey).Distinct());
-        Assert.Equal($"software-architect:onboarding:{eventId:N}", sent[0].IdempotencyKey);
-        Assert.Contains("delivery-planning kickoff", sent[0].Content, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("design capability", sent[0].Content, StringComparison.OrdinalIgnoreCase);
+        Assert.All(sent, message => Assert.Equal(conversationId,
+            message.GetProperty("chatId").GetGuid()));
+        Assert.Single(sent.Select(x => x.GetProperty("idempotencyKey").GetString()).Distinct());
+        Assert.Equal($"software-architect:onboarding:{eventId:N}",
+            sent[0].GetProperty("idempotencyKey").GetString());
+        Assert.Contains("delivery-planning kickoff", sent[0].GetProperty("content").GetString(), StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("design capability", sent[0].GetProperty("content").GetString(), StringComparison.OrdinalIgnoreCase);
         Assert.All(completed, request => Assert.Equal(eventId, request.EventId));
     }
 

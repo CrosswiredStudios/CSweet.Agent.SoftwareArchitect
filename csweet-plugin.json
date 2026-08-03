@@ -4,7 +4,7 @@
   "kind": "agent",
   "id": "com.csweet.software-architect",
   "name": "C-Sweet Software Architect",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "publisher": {
     "id": "com.csweet",
     "name": "C-Sweet"
@@ -703,6 +703,26 @@
       "purpose": "Send idempotent architecture clarifications, risks, decisions, and publication status"
     },
     {
+      "name": "communication.coordination.start.v1",
+      "scope": "organization",
+      "purpose": "Start a bounded durable collaboration with an eligible organization agent"
+    },
+    {
+      "name": "communication.coordination.respond.v1",
+      "scope": "organization",
+      "purpose": "Submit one structured architecture collaboration disposition"
+    },
+    {
+      "name": "communication.coordination.read.v1",
+      "scope": "organization",
+      "purpose": "Read a collaboration session in which this Architect participates"
+    },
+    {
+      "name": "communication.coordination.cancel.v1",
+      "scope": "organization",
+      "purpose": "Stop a collaboration in which this Architect participates"
+    },
+    {
       "name": "agent.onboarding.complete.v1",
       "scope": "organization",
       "purpose": "Acknowledge completion of this installation's durable onboarding event"
@@ -751,7 +771,8 @@
   "events": {
     "subscribes": [
       "com.csweet.agent.onboarded.v1",
-      "com.csweet.user.message.received.v1"
+      "com.csweet.user.message.received.v1",
+      "com.csweet.agent.coordination.turn-requested.v1"
     ]
   },
   "configuration": [

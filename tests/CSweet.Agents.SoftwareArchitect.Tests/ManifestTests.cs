@@ -47,6 +47,10 @@ public sealed class ManifestTests
                 CommunicationCapabilities.ChatRead,
                 CommunicationCapabilities.ChatCreate,
                 CommunicationCapabilities.MessageSend,
+                CommunicationCapabilities.CoordinationStart,
+                CommunicationCapabilities.CoordinationRespond,
+                CommunicationCapabilities.CoordinationRead,
+                CommunicationCapabilities.CoordinationCancel,
                 AgentLifecycleCapabilities.CompleteOnboarding,
                 WorkBoardCapabilities.Read,
                 WorkItemCapabilities.Read,
@@ -63,7 +67,8 @@ public sealed class ManifestTests
         Assert.Empty(root.GetProperty("webAccess").GetProperty("rules").EnumerateArray());
         Assert.Equal("None", root.GetProperty("runtime").GetProperty("workspaceAccess").GetString());
         Assert.Equal(
-            [AgentLifecycleEvents.Onboarded, SoftwareArchitectProfile.UserMessageReceivedEvent],
+            [AgentLifecycleEvents.Onboarded, SoftwareArchitectProfile.UserMessageReceivedEvent,
+                AgentCoordinationEvents.TurnRequested],
             root.GetProperty("events").GetProperty("subscribes")
                 .EnumerateArray().Select(x => x.GetString()!).ToArray());
         Assert.DoesNotContain(GitWorkspaceCapabilities.Prepare, required);
