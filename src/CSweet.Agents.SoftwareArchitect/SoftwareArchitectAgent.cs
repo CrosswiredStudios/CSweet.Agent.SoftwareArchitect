@@ -521,13 +521,7 @@ Product Manager: please reconcile these constraints with the product outcome and
             throw new ArchitectureDesignException(
                 "Configure an approved LLM provider and model before starting a conversation.");
 
-        var selection = new AgentLlmSelection(
-            providerProfileId.Value,
-            model,
-            new AgentLlmInvocationContext(
-                Guid.TryParse(input.ConversationId, out var conversationId) ? conversationId : null,
-                input.ChatTurnId == Guid.Empty ? null : input.ChatTurnId,
-                "primary"));
+        var selection = new AgentLlmSelection(providerProfileId.Value, model);
         var chatClient = _llmClientFactory is null
             ? context.CreateChatClient(selection)
             : await _llmClientFactory.CreateChatClientAsync(selection, cancellationToken);
