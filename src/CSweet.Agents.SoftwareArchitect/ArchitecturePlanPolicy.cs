@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using CSweet.Agent.SDK;
 using CSweet.WorkManagement.Contracts;
 
 namespace CSweet.Agents.SoftwareArchitect;
@@ -40,7 +41,10 @@ internal static class ArchitecturePlanPolicy
             ?? ValidateList(request.QualityAttributes, "qualityAttributes");
     }
 
-    internal static string? ValidatePlan(ArchitecturePlan? plan, bool forPublication)
+    internal static string? ValidatePlan(
+        ArchitecturePlan? plan,
+        bool forPublication,
+        ArchitectureDeliveryProfile? deliveryProfile = null)
     {
         if (plan is null)
             return "The architecture plan is required.";
@@ -137,6 +141,9 @@ internal static class ArchitecturePlanPolicy
             if (sprint.StartsAt is not null && sprint.EndsAt is not null &&
                 sprint.EndsAt <= sprint.StartsAt)
                 return $"Sprint {sprint.Ordinal} must end after it starts.";
+            if (deliveryProfile is not null && sprint.StartsAt is not null && sprint.EndsAt is not null &&
+                sprint.EndsAt - sprint.StartsAt > TimeSpan.FromDays(deliveryProfile.SprintLengthDays))
+                return $"Sprint {sprint.Ordinal} exceeds the {deliveryProfile.SprintLengthDays}-day team-aware execution window.";
             if (sprint.Tickets is null || sprint.Tickets.Count == 0)
                 return $"Sprint {sprint.Ordinal} requires at least one independently testable ticket.";
             if (!sprint.Tickets.Any(x => x.Kind == WorkItemKinds.Story))
@@ -166,13 +173,25 @@ internal static class ArchitecturePlanPolicy
                     return $"Ticket '{ticket.Key}' requires test guidance.";
                 if (string.IsNullOrWhiteSpace(ticket.MigrationAndRollback))
                     return $"Ticket '{ticket.Key}' requires migration and rollback guidance.";
-                if (ticket.EstimatePoints is null or <= 0 or > 100)
-                    return $"Ticket '{ticket.Key}' estimatePoints must be greater than 0 and at most 100.";
+                if ((deliveryProfile?.UsesHumanEstimates ?? true) && ticket.EstimatePoints is null)
+                    return $"Ticket '{ticket.Key}' requires a positive human-inclusive story-point estimate.";
+                if (deliveryProfile?.UsesHumanEstimates == false && ticket.EstimatePoints is not null)
+                    return $"Ticket '{ticket.Key}' must not use human story-point estimates for an agent-only team.";
+                if (ticket.EstimatePoints is <= 0 or > 100)
+                    return $"Ticket '{ticket.Key}' estimatePoints must be greater than 0 and at most 100 when provided.";
             }
         }
 
         if (!ordinals.SetEquals(Enumerable.Range(1, plan.Sprints.Count)))
             return "Sprint ordinals must be sequential beginning at 1.";
+        var datedSprints = plan.Sprints.OrderBy(x => x.Ordinal).ToList();
+        for (var index = 1; index < datedSprints.Count; index++)
+        {
+            var previous = datedSprints[index - 1];
+            var current = datedSprints[index];
+            if (previous.EndsAt.HasValue && current.StartsAt.HasValue && current.StartsAt < previous.EndsAt)
+                return $"Sprint {current.Ordinal} overlaps sprint {previous.Ordinal}.";
+        }
 
         var ticketSequence = plan.Sprints
             .SelectMany(sprint => sprint.Tickets.Select(ticket => new
@@ -233,7 +252,18 @@ internal static class ArchitecturePlanPolicy
             return "The approved design belongs to a different board.";
         if (request.Design.PlanId == Guid.Empty)
             return "The approved plan ID is required.";
-        if (!FixedTimeEquals(request.Design.PlanHash, ComputeHash(request.Design.Plan)))
+        if (request.Design.DeliveryProfile is null ||
+            string.IsNullOrWhiteSpace(request.Design.DeliveryProfile.ScheduleBasis) ||
+            request.Design.DeliveryProfile.SprintLengthDays is < 1 or > 30 ||
+            request.Design.DeliveryProfile.HumanDeliveryMemberCount < 0 ||
+            request.Design.DeliveryProfile.AgentDeliveryMemberCount < 0 ||
+            request.Design.DeliveryProfile.HumanDeliveryMemberCount +
+            request.Design.DeliveryProfile.AgentDeliveryMemberCount == 0 ||
+            request.Design.DeliveryProfile.UsesHumanEstimates !=
+            (request.Design.DeliveryProfile.HumanDeliveryMemberCount > 0))
+            return "The approved delivery profile is invalid.";
+        if (!FixedTimeEquals(request.Design.PlanHash,
+                ComputeHash(request.Design.Plan, request.Design.DeliveryProfile)))
             return "The approved plan hash does not match the plan content.";
         if (request.Approval is null)
             return "Product Manager approval is required.";
@@ -252,55 +282,108 @@ internal static class ArchitecturePlanPolicy
         if (request.AccountableOrganizationUserId == Guid.Empty)
             return "accountableOrganizationUserId is required for executable tickets.";
         var developers = NormalizeAssignmentPool(
-            request.DeveloperInstallationIds, request.DeveloperInstallationId);
+            request.DeveloperAssignments, request.DeveloperInstallationIds, request.DeveloperInstallationId);
         var quality = NormalizeAssignmentPool(
-            request.QualityInstallationIds, request.QualityInstallationId);
+            request.QualityAssignments, request.QualityInstallationIds, request.QualityInstallationId);
         if (developers.Count == 0)
-            return "At least one Developer installation is required for executable tickets.";
+            return "At least one Developer assignment is required for executable tickets.";
         if (quality.Count == 0)
-            return "At least one Software QA installation is required for executable tickets.";
+            return "At least one Software QA assignment is required for executable tickets.";
         if (developers.Intersect(quality).Any())
-            return "Developer and Software QA assignment pools must use different installations.";
+            return "Developer and Software QA assignment pools must use different team members.";
         if (string.IsNullOrWhiteSpace(request.IdempotencyKey))
             return "idempotencyKey is required.";
-        return ValidatePlan(request.Design.Plan, forPublication: true);
+        return ValidatePlan(request.Design.Plan, forPublication: true, request.Design.DeliveryProfile);
     }
 
-    internal static IReadOnlyList<Guid> NormalizeAssignmentPool(
+    internal static ArchitectureDeliveryProfile BuildDeliveryProfile(
+        TeamRosterResponse roster,
+        int? requestedSprintLengthDays,
+        int defaultHumanSprintLengthDays)
+    {
+        var deliveryMembers = roster.Team?.Members
+            .Where(x => !x.Presence.Equals("Inactive", StringComparison.OrdinalIgnoreCase) &&
+                        (NormalizeRole(x.TeamRole ?? x.CompanyRole ?? string.Empty) == NormalizeRole("Software Developer") ||
+                         NormalizeRole(x.TeamRole ?? x.CompanyRole ?? string.Empty) == NormalizeRole("Software QA")))
+            .ToList() ?? [];
+        if (deliveryMembers.Count == 0)
+            throw new ArchitectureDesignException(
+                "The active approved Developer and Software QA team composition is required before scheduling delivery.");
+        var humans = deliveryMembers.Count(x =>
+            x.EmployeeType.Equals("Human", StringComparison.OrdinalIgnoreCase));
+        var agents = deliveryMembers.Count(x =>
+            x.EmployeeType.Equals("Agent", StringComparison.OrdinalIgnoreCase));
+        if (humans + agents != deliveryMembers.Count)
+            throw new ArchitectureDesignException(
+                "Every active delivery member must be identified as a Human or Agent before scheduling delivery.");
+        var usesHumanEstimates = humans > 0;
+        var sprintLength = usesHumanEstimates
+            ? requestedSprintLengthDays ?? defaultHumanSprintLengthDays
+            : SoftwareArchitectProfile.DefaultAgentOnlySprintLengthDays;
+        var basis = usesHumanEstimates
+            ? $"Human-inclusive delivery team ({humans} human, {agents} agent); use human story points and a {sprintLength}-day cadence."
+            : $"Agent-only delivery team ({agents} agents); use dependency depth and safe parallelism with {sprintLength}-day execution windows, without human story points or velocity assumptions.";
+        return new ArchitectureDeliveryProfile(basis, sprintLength, usesHumanEstimates, humans, agents);
+    }
+
+    internal static IReadOnlyList<ArchitectureAssignmentPrincipal> NormalizeAssignmentPool(
+        IReadOnlyList<ArchitectureAssignmentPrincipal>? assignments,
         IReadOnlyList<Guid>? installationIds,
         Guid legacyInstallationId)
     {
-        var values = (installationIds ?? [])
+        var legacy = (installationIds ?? [])
             .Where(x => x != Guid.Empty)
             .Append(legacyInstallationId)
             .Where(x => x != Guid.Empty)
+            .Select(x => new ArchitectureAssignmentPrincipal(
+                WorkOrchestrationPrincipalKinds.AgentInstallation,
+                AgentInstallationId: x));
+        var values = (assignments ?? [])
+            .Concat(legacy)
+            .Where(IsValidAssignment)
             .Distinct()
-            .OrderBy(x => x)
+            .OrderBy(AssignmentKey, StringComparer.Ordinal)
             .ToList();
         return values;
     }
 
-    internal static Guid AssignLeastLoaded(
-        IReadOnlyList<Guid> pool,
-        IDictionary<Guid, decimal> assignedPoints,
+    internal static ArchitectureAssignmentPrincipal AssignLeastLoaded(
+        IReadOnlyList<ArchitectureAssignmentPrincipal> pool,
+        IDictionary<string, decimal> assignedPoints,
         decimal estimatePoints)
     {
-        decimal Load(Guid installationId) =>
-            assignedPoints.TryGetValue(installationId, out var points) ? points : 0m;
+        decimal Load(ArchitectureAssignmentPrincipal assignment) =>
+            assignedPoints.TryGetValue(AssignmentKey(assignment), out var points) ? points : 0m;
         var selected = pool
             .OrderBy(Load)
-            .ThenBy(x => x)
+            .ThenBy(AssignmentKey, StringComparer.Ordinal)
             .First();
-        assignedPoints[selected] = Load(selected) + estimatePoints;
+        assignedPoints[AssignmentKey(selected)] = Load(selected) + estimatePoints;
         return selected;
     }
+
+    internal static string AssignmentKey(ArchitectureAssignmentPrincipal assignment) =>
+        $"{assignment.PrincipalKind}:{assignment.OrganizationUserId:D}:{assignment.AgentInstallationId:D}";
+
+    private static bool IsValidAssignment(ArchitectureAssignmentPrincipal assignment) =>
+        assignment.PrincipalKind switch
+        {
+            WorkOrchestrationPrincipalKinds.Human =>
+                assignment.OrganizationUserId is { } userId && userId != Guid.Empty &&
+                !assignment.AgentInstallationId.HasValue,
+            WorkOrchestrationPrincipalKinds.AgentInstallation =>
+                assignment.AgentInstallationId is { } installationId && installationId != Guid.Empty &&
+                !assignment.OrganizationUserId.HasValue,
+            _ => false
+        };
 
     internal static ArchitectureDesignResponse FinalizeDraft(
         ArchitectureDesignRequest request,
         ArchitecturePlan plan,
-        DateTimeOffset preparedAt)
+        DateTimeOffset preparedAt,
+        ArchitectureDeliveryProfile deliveryProfile)
     {
-        var hash = ComputeHash(plan);
+        var hash = ComputeHash(plan, deliveryProfile);
         var planId = DeterministicGuid($"{request.IdempotencyKey}:{hash}");
         return new ArchitectureDesignResponse(
             planId,
@@ -308,12 +391,15 @@ internal static class ArchitecturePlanPolicy
             request.BoardId,
             request.ProductGoal!.Trim(),
             plan,
-            preparedAt);
+            preparedAt,
+            deliveryProfile);
     }
 
-    internal static string ComputeHash(ArchitecturePlan plan)
+    internal static string ComputeHash(
+        ArchitecturePlan plan,
+        ArchitectureDeliveryProfile deliveryProfile)
     {
-        var canonical = JsonSerializer.Serialize(plan, JsonOptions);
+        var canonical = JsonSerializer.Serialize(new { Plan = plan, DeliveryProfile = deliveryProfile }, JsonOptions);
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(canonical))).ToLowerInvariant();
     }
 
@@ -334,6 +420,9 @@ internal static class ArchitecturePlanPolicy
 
 ## Architecture summary
 {plan.Summary}
+
+## Delivery timeline basis
+{design.DeliveryProfile.ScheduleBasis}
 
 ## System context
 {plan.SystemContext}
@@ -429,4 +518,7 @@ internal static class ArchitecturePlanPolicy
 
     private static string Bullets(IReadOnlyList<string> values) =>
         values.Count == 0 ? "- None." : string.Join(Environment.NewLine, values.Select(x => $"- {x}"));
+
+    private static string NormalizeRole(string value) =>
+        new(value.Trim().ToLowerInvariant().Where(char.IsLetterOrDigit).ToArray());
 }

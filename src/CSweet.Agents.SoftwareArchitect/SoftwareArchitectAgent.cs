@@ -180,15 +180,24 @@ Product Manager: please reconcile these constraints with the product outcome and
             cancellationToken);
         try
         {
+            var roster = await context.Platform.ReadTeamRosterAsync(token: cancellationToken);
+            var deliveryProfile = ArchitecturePlanPolicy.BuildDeliveryProfile(
+                roster,
+                input!.SprintLengthDays,
+                Settings.GetInt32(
+                    "defaultSprintLengthDays",
+                    SoftwareArchitectProfile.DefaultSprintLengthDays));
             var plan = await _designGenerator.GenerateAsync(
-                input!,
+                input with { SprintLengthDays = deliveryProfile.SprintLengthDays },
+                deliveryProfile,
                 context,
                 Settings,
                 cancellationToken);
-            error = ArchitecturePlanPolicy.ValidatePlan(plan, forPublication: false);
+            error = ArchitecturePlanPolicy.ValidatePlan(plan, forPublication: false, deliveryProfile);
             if (error is not null)
                 return AgentWorkResult.Failure(error);
-            var response = ArchitecturePlanPolicy.FinalizeDraft(input!, plan, DateTimeOffset.UtcNow);
+            var response = ArchitecturePlanPolicy.FinalizeDraft(
+                input, plan, DateTimeOffset.UtcNow, deliveryProfile);
             await context.ReportProgressAsync(
                 new
                 {
@@ -262,20 +271,20 @@ Product Manager: please reconcile these constraints with the product outcome and
         var publishedSprints = new List<PublishedSprint>();
         var publishedTickets = new List<PublishedTicket>();
         var developerPool = ArchitecturePlanPolicy.NormalizeAssignmentPool(
-            input.DeveloperInstallationIds, input.DeveloperInstallationId);
+            input.DeveloperAssignments, input.DeveloperInstallationIds, input.DeveloperInstallationId);
         var qualityPool = ArchitecturePlanPolicy.NormalizeAssignmentPool(
-            input.QualityInstallationIds, input.QualityInstallationId);
-        var developerLoad = developerPool.ToDictionary(x => x, _ => 0m);
-        var qualityLoad = qualityPool.ToDictionary(x => x, _ => 0m);
+            input.QualityAssignments, input.QualityInstallationIds, input.QualityInstallationId);
+        var developerLoad = developerPool.ToDictionary(ArchitecturePlanPolicy.AssignmentKey, _ => 0m);
+        var qualityLoad = qualityPool.ToDictionary(ArchitecturePlanPolicy.AssignmentKey, _ => 0m);
         var sprintIds = new Dictionary<int, Guid>();
-        var fallbackStart = NextMonday(design.PreparedAt);
+        var fallbackStart = NextPlanningBoundary(design.PreparedAt, design.DeliveryProfile.UsesHumanEstimates);
         foreach (var sprintPlan in plan.Sprints.OrderBy(x => x.Ordinal))
         {
             cancellationToken.ThrowIfCancellationRequested();
             var startsAt = sprintPlan.StartsAt ?? fallbackStart.AddDays(
-                (sprintPlan.Ordinal - 1) * SoftwareArchitectProfile.DefaultSprintLengthDays);
+                (sprintPlan.Ordinal - 1) * design.DeliveryProfile.SprintLengthDays);
             var endsAt = sprintPlan.EndsAt ??
-                         startsAt.AddDays(SoftwareArchitectProfile.DefaultSprintLengthDays);
+                         startsAt.AddDays(design.DeliveryProfile.SprintLengthDays);
             var sprint = await context.Platform.Work.CreateSprintAsync(
                 new CreateWorkSprintRequest(
                     input.BoardId,
@@ -314,11 +323,11 @@ Product Manager: please reconcile these constraints with the product outcome and
             {
                 var ticketPlan = entry.Ticket;
                 var ticketKey = NormalizeKey(ticketPlan.Key);
-                var estimatePoints = ticketPlan.EstimatePoints!.Value;
-                var developerInstallationId = ArchitecturePlanPolicy.AssignLeastLoaded(
-                    developerPool, developerLoad, estimatePoints);
-                var qualityInstallationId = ArchitecturePlanPolicy.AssignLeastLoaded(
-                    qualityPool, qualityLoad, estimatePoints);
+                var loadWeight = ticketPlan.EstimatePoints ?? 1m;
+                var developerAssignment = ArchitecturePlanPolicy.AssignLeastLoaded(
+                    developerPool, developerLoad, loadWeight);
+                var qualityAssignment = ArchitecturePlanPolicy.AssignLeastLoaded(
+                    qualityPool, qualityLoad, loadWeight);
                 var delivery = new WorkItemDeliverySpecification(
                     input.RepositoryId,
                     ticketPlan.Requirements,
@@ -348,12 +357,14 @@ Product Manager: please reconcile these constraints with the product outcome and
                         [
                             new WorkStageAssignment(
                                 "development",
-                                WorkOrchestrationPrincipalKinds.AgentInstallation,
-                                AgentInstallationId: developerInstallationId),
+                                developerAssignment.PrincipalKind,
+                                developerAssignment.OrganizationUserId,
+                                developerAssignment.AgentInstallationId),
                             new WorkStageAssignment(
                                 "quality",
-                                WorkOrchestrationPrincipalKinds.AgentInstallation,
-                                AgentInstallationId: qualityInstallationId),
+                                qualityAssignment.PrincipalKind,
+                                qualityAssignment.OrganizationUserId,
+                                qualityAssignment.AgentInstallationId),
                             new WorkStageAssignment(
                                 "merge-decision",
                                 WorkOrchestrationPrincipalKinds.BoardManager),
@@ -364,8 +375,8 @@ Product Manager: please reconcile these constraints with the product outcome and
                         ]
                     },
                     cancellationToken);
-                EnsureStableAgentAssignment(item, "development", developerInstallationId);
-                EnsureStableAgentAssignment(item, "quality", qualityInstallationId);
+                EnsureStableAssignment(item, "development", developerAssignment);
+                EnsureStableAssignment(item, "quality", qualityAssignment);
                 if (ticketPlan.EstimatePoints is not null)
                     item = await context.Platform.Work.EstimateAsync(
                         new EstimateWorkItemRequest(
@@ -426,7 +437,7 @@ Product Manager: please reconcile these constraints with the product outcome and
             return "The architecture board does not belong to the active approved team.";
         var organization = await context.Platform.ReadOrganizationSnapshotAsync(cancellationToken);
 
-        IReadOnlySet<Guid> InstallationsFor(string role)
+        IReadOnlySet<ArchitectureAssignmentPrincipal> AssignmentsFor(string role)
         {
             var employeeIds = roster.Team.Members
                 .Where(x => !x.Presence.Equals("Inactive", StringComparison.OrdinalIgnoreCase) &&
@@ -435,38 +446,52 @@ Product Manager: please reconcile these constraints with the product outcome and
                 .Where(x => x != Guid.Empty)
                 .ToHashSet();
             return organization.People
-                .Where(x => employeeIds.Contains(x.Id) && x.IsActive && x.AgentInstallationId.HasValue)
-                .Select(x => x.AgentInstallationId!.Value)
+                .Where(x => employeeIds.Contains(x.Id) && x.IsActive)
+                .Select(x => string.Equals(x.EmployeeType, "Human", StringComparison.OrdinalIgnoreCase)
+                    ? new ArchitectureAssignmentPrincipal(
+                        WorkOrchestrationPrincipalKinds.Human,
+                        OrganizationUserId: x.Id)
+                    : x.AgentInstallationId.HasValue
+                        ? new ArchitectureAssignmentPrincipal(
+                            WorkOrchestrationPrincipalKinds.AgentInstallation,
+                            AgentInstallationId: x.AgentInstallationId.Value)
+                        : null)
+                .Where(x => x is not null)
+                .Select(x => x!)
                 .ToHashSet();
         }
 
-        var architects = InstallationsFor("Software Architect");
+        var architects = AssignmentsFor("Software Architect")
+            .Where(x => x.PrincipalKind == WorkOrchestrationPrincipalKinds.AgentInstallation)
+            .ToHashSet();
         if (architects.Count != 1)
             return "The approved team must have exactly one designated active Software Architect.";
-        var allowedDevelopers = InstallationsFor("Software Developer");
-        var allowedQuality = InstallationsFor("Software QA");
+        var allowedDevelopers = AssignmentsFor("Software Developer");
+        var allowedQuality = AssignmentsFor("Software QA");
         var developers = ArchitecturePlanPolicy.NormalizeAssignmentPool(
-            request.DeveloperInstallationIds, request.DeveloperInstallationId);
+            request.DeveloperAssignments, request.DeveloperInstallationIds, request.DeveloperInstallationId);
         var quality = ArchitecturePlanPolicy.NormalizeAssignmentPool(
-            request.QualityInstallationIds, request.QualityInstallationId);
+            request.QualityAssignments, request.QualityInstallationIds, request.QualityInstallationId);
         if (developers.Any(x => !allowedDevelopers.Contains(x)))
-            return "The Developer assignment pool contains an installation outside the active approved team.";
+            return "The Developer assignment pool contains a member outside the active approved team.";
         if (quality.Any(x => !allowedQuality.Contains(x)))
-            return "The Software QA assignment pool contains an installation outside the active approved team.";
+            return "The Software QA assignment pool contains a member outside the active approved team.";
         return null;
     }
 
     private static string NormalizeRole(string value) =>
         new(value.Trim().ToLowerInvariant().Where(char.IsLetterOrDigit).ToArray());
 
-    private static void EnsureStableAgentAssignment(
+    private static void EnsureStableAssignment(
         WorkItem item,
         string stageKey,
-        Guid expectedInstallationId)
+        ArchitectureAssignmentPrincipal expected)
     {
         var assignment = item.StageAssignments.SingleOrDefault(x =>
             x.StageKey.Equals(stageKey, StringComparison.Ordinal));
-        if (assignment?.AgentInstallationId != expectedInstallationId)
+        if (assignment?.PrincipalKind != expected.PrincipalKind ||
+            assignment.OrganizationUserId != expected.OrganizationUserId ||
+            assignment.AgentInstallationId != expected.AgentInstallationId)
             throw new InvalidOperationException(
                 $"Ticket '{item.Identifier ?? item.Id.ToString("D")}' has a different persisted {stageKey} assignment. " +
                 "The approved assignment pool changed during an idempotent publication retry.");
@@ -843,9 +868,11 @@ plan is published as independently testable sprint increments and developer-read
         value.Trim().ToLowerInvariant() is
             "thanks" or "thank you" or "ack" or "acknowledged" or "received" or "noted";
 
-    private static DateTimeOffset NextMonday(DateTimeOffset value)
+    private static DateTimeOffset NextPlanningBoundary(DateTimeOffset value, bool usesHumanCadence)
     {
         var date = new DateTimeOffset(value.Year, value.Month, value.Day, 0, 0, 0, value.Offset);
+        if (!usesHumanCadence)
+            return date.AddDays(1);
         var days = ((int)DayOfWeek.Monday - (int)date.DayOfWeek + 7) % 7;
         return date.AddDays(days == 0 ? 7 : days);
     }

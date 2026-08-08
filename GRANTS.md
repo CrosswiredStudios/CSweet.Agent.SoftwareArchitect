@@ -1,6 +1,6 @@
 # Software Architect grants
 
-This document describes the minimum authority requested by package version `0.4.0`.
+This document describes the minimum authority requested by package version `0.5.0`.
 
 Durable collaboration uses `communication.coordination.start.v1`,
 `communication.coordination.respond.v1`, `communication.coordination.read.v1`, and

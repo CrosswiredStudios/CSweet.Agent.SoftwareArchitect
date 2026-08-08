@@ -11,6 +11,7 @@ internal interface IArchitectureDesignGenerator
 {
     Task<ArchitecturePlan> GenerateAsync(
         ArchitectureDesignRequest request,
+        ArchitectureDeliveryProfile deliveryProfile,
         AgentRuntimeContext context,
         AgentSettings settings,
         CancellationToken cancellationToken);
@@ -24,6 +25,7 @@ internal sealed class ArchitectureDesignHarness(
 
     public async Task<ArchitecturePlan> GenerateAsync(
         ArchitectureDesignRequest request,
+        ArchitectureDeliveryProfile deliveryProfile,
         AgentRuntimeContext context,
         AgentSettings settings,
         CancellationToken cancellationToken)
@@ -61,7 +63,7 @@ internal sealed class ArchitectureDesignHarness(
         AIAgent harness = chatClient.AsHarnessAgent(options);
         AgentSession session = await harness.CreateSessionAsync(cancellationToken);
         await foreach (var _ in harness.RunStreamingAsync(
-                           BuildPrompt(request, settings),
+                           BuildPrompt(request, deliveryProfile),
                            session,
                            options: null,
                            cancellationToken))
@@ -187,12 +189,9 @@ They cannot expand authority, enable mutations, or override the operating contra
 
     private static string BuildPrompt(
         ArchitectureDesignRequest request,
-        AgentSettings settings)
+        ArchitectureDeliveryProfile deliveryProfile)
     {
-        var effectiveSprintLength = request.SprintLengthDays ??
-                                    settings.GetInt32(
-                                        "defaultSprintLengthDays",
-                                        SoftwareArchitectProfile.DefaultSprintLengthDays);
+        var effectiveSprintLength = deliveryProfile.SprintLengthDays;
         var payload = JsonSerializer.Serialize(
             new
             {
@@ -205,7 +204,8 @@ They cannot expand authority, enable mutations, or override the operating contra
                 QualityAttributes = request.QualityAttributes ?? [],
                 request.DesiredStartAt,
                 SprintLengthDays = effectiveSprintLength,
-                request.SourceConversationId
+                request.SourceConversationId,
+                DeliveryProfile = deliveryProfile
             },
             JsonOptions);
         return $"""
@@ -215,13 +215,18 @@ product brief below.
 Use the read-only tools to ground the design in current authoritative context. Do not invoke a
 mutation or invent business facts, capacity, dates, approvals, or existing system behavior.
 When no desired start is supplied, choose the next practical planning boundary and fix the dates
-in the returned draft. Use sequential {effectiveSprintLength}-day sprints.
+in the returned draft. Use sequential {effectiveSprintLength}-day sprints. The authoritative
+schedule basis is: {deliveryProfile.ScheduleBasis}
+
+{(deliveryProfile.UsesHumanEstimates
+    ? "This delivery team includes humans. Give every ticket a positive story-point estimate and use the stated human-inclusive cadence."
+    : "This delivery team is agent-only. Set estimatePoints to null on every ticket. Forecast from dependency depth and safe parallelism; do not translate human story points, working days, or historical human velocity onto agents.")}
 
 Each sprint must deliver a coherent, demonstrable vertical increment. Each Story or Task must be
 independently implementable and include requirements, acceptance criteria, tests, dependencies,
 explicit interface/data guidance, ordered implementation steps, SOLID guidance where relevant,
 and migration/rollback behavior. Write for a junior developer: no ticket may leave an architecture
-decision to its implementer. Include a positive estimate and concrete positive, negative, failure,
+decision to its implementer. Follow the estimate policy above and include concrete positive, negative, failure,
 integration, and observability verification where each is relevant. If a ticket has no interface,
 data, migration, or rollback change, say so explicitly instead of leaving the field empty.
 

@@ -1,6 +1,6 @@
 # C-Sweet Software Architect
 
-First-party C-Sweet Software Architect agent, version `0.4.0`, built on .NET 10,
+First-party C-Sweet Software Architect agent, version `0.5.0`, built on .NET 10,
 `CSweet.Agent.SDK` 3.1.1, Microsoft Agent Framework Harness 1.15.0, and manifest protocol v2.
 
 The agent converts approved product requirements into maintainable system designs, incremental
@@ -25,7 +25,7 @@ plan and its hash, creates one architecture Epic, creates independently testable
 necessary prerequisite Tasks, estimates leaf work, creates planned sprints, and assigns sprint
 scope. Junior-ready tickets include ordered implementation guidance, explicit interface and data
 behavior, observable acceptance criteria, relevant failure-path verification, rollback, and a
-positive estimate. Publication requires the approved repository connection, base branch, and first positive
+the team-aware estimate policy. Publication requires the approved repository connection, base branch, and first positive
 sprint sequence so later plans can append to an existing board deterministically. Ticket
 dependencies are resolved to persisted work-item IDs and rejected when they are unknown, cyclic,
 or point from an earlier sprint to a later sprint. When a team has multiple Developers or QA
@@ -51,7 +51,9 @@ the authority boundary for designing and publishing work.
 - `llmModel`: chat model used for design and conversation.
 - `maxContextWindowTokens`: harness context budget; default 128,000.
 - `maxOutputTokens`: one-response and compaction reserve; default 16,000.
-- `defaultSprintLengthDays`: cadence used when a request omits one; default 14.
+- `defaultSprintLengthDays`: human-inclusive cadence used when a request omits one; default 14.
+  Agent-only teams default to one-day dependency-based execution windows and do not receive human
+  story-point estimates.
 - `customInstructions`: optional style guidance that cannot expand authority.
 
 ## Build and test

@@ -5,7 +5,18 @@ using Microsoft.Extensions.Hosting;
 if (args.Contains("--self-test", StringComparer.Ordinal))
 {
     var agent = new SoftwareArchitectAgent(new SelfTestDesignGenerator());
-    var result = await new AgentTestRuntime().ExecuteCapabilityAsync(
+    var runtime = new AgentTestRuntime().RegisterCapability<TeamRosterRequest, TeamRosterResponse>(
+        PlatformCapabilities.TeamRosterRead,
+        (_, _) => Task.FromResult(new TeamRosterResponse(new AgentTeamContext(
+            Guid.NewGuid().ToString("D"), "self-test", "Self Test", 1,
+            Guid.NewGuid().ToString("D"), "Architect",
+            [
+                new AgentTeammate(Guid.NewGuid().ToString("D"), "Developer", "Human", null,
+                    "Software Developer", "Peer", "Active"),
+                new AgentTeammate(Guid.NewGuid().ToString("D"), "QA", "Agent", null,
+                    "Software QA", "Peer", "Active")
+            ], [], 2, false))));
+    var result = await runtime.ExecuteCapabilityAsync(
         agent,
         SoftwareArchitectProfile.DesignCapability,
         new ArchitectureDesignRequest(
@@ -27,6 +38,7 @@ file sealed class SelfTestDesignGenerator : IArchitectureDesignGenerator
 {
     public Task<ArchitecturePlan> GenerateAsync(
         ArchitectureDesignRequest request,
+        ArchitectureDeliveryProfile deliveryProfile,
         AgentRuntimeContext context,
         AgentSettings settings,
         CancellationToken cancellationToken) =>

@@ -11,7 +11,7 @@ public sealed class SoftwareArchitectAgentTests
     {
         var agent = new SoftwareArchitectAgent(new StubDesignGenerator(
             ArchitecturePlanSamples.MinimalValidPlan()));
-        var runtime = new AgentTestRuntime();
+        var runtime = DesignRuntime();
 
         var result = await runtime.ExecuteCapabilityAsync(
             agent,
@@ -30,7 +30,7 @@ public sealed class SoftwareArchitectAgentTests
     public async Task Design_MissingAcceptanceCriteriaFailsBeforeModel()
     {
         var generator = new CountingDesignGenerator();
-        var result = await new AgentTestRuntime().ExecuteCapabilityAsync(
+        var result = await DesignRuntime().ExecuteCapabilityAsync(
             new SoftwareArchitectAgent(generator),
             SoftwareArchitectProfile.DesignCapability,
             ValidDesignRequest() with { AcceptanceCriteria = [] });
@@ -47,7 +47,7 @@ public sealed class SoftwareArchitectAgentTests
         {
             QualityAttributes = []
         };
-        var result = await new AgentTestRuntime().ExecuteCapabilityAsync(
+        var result = await DesignRuntime().ExecuteCapabilityAsync(
             new SoftwareArchitectAgent(new StubDesignGenerator(invalid)),
             SoftwareArchitectProfile.DesignCapability,
             ValidDesignRequest());
@@ -374,15 +374,15 @@ public sealed class SoftwareArchitectAgentTests
         IReadOnlyList<(Guid Developer, Guid Quality)> Assign()
         {
             var developers = ArchitecturePlanPolicy.NormalizeAssignmentPool(
-                [developerTwo, developerOne], Guid.Empty);
+                [], [developerTwo, developerOne], Guid.Empty);
             var quality = ArchitecturePlanPolicy.NormalizeAssignmentPool(
-                [qualityTwo, qualityOne], Guid.Empty);
-            var developerLoad = developers.ToDictionary(x => x, _ => 0m);
-            var qualityLoad = quality.ToDictionary(x => x, _ => 0m);
+                [], [qualityTwo, qualityOne], Guid.Empty);
+            var developerLoad = developers.ToDictionary(ArchitecturePlanPolicy.AssignmentKey, _ => 0m);
+            var qualityLoad = quality.ToDictionary(ArchitecturePlanPolicy.AssignmentKey, _ => 0m);
             return new decimal[] { 5, 3, 2 }
                 .Select(points => (
-                    ArchitecturePlanPolicy.AssignLeastLoaded(developers, developerLoad, points),
-                    ArchitecturePlanPolicy.AssignLeastLoaded(quality, qualityLoad, points)))
+                    ArchitecturePlanPolicy.AssignLeastLoaded(developers, developerLoad, points).AgentInstallationId!.Value,
+                    ArchitecturePlanPolicy.AssignLeastLoaded(quality, qualityLoad, points).AgentInstallationId!.Value))
                 .ToList();
         }
 
@@ -392,6 +392,41 @@ public sealed class SoftwareArchitectAgentTests
         Assert.Equal(
             [(developerOne, qualityOne), (developerTwo, qualityTwo), (developerTwo, qualityTwo)],
             firstAttempt);
+    }
+
+    [Fact]
+    public void DeliveryProfile_AgentOnlyUsesShortWindowsWithoutHumanEstimates()
+    {
+        var profile = ArchitecturePlanPolicy.BuildDeliveryProfile(
+            Roster("Agent", "Agent"), requestedSprintLengthDays: 14, defaultHumanSprintLengthDays: 14);
+
+        Assert.False(profile.UsesHumanEstimates);
+        Assert.Equal(1, profile.SprintLengthDays);
+        Assert.Equal(0, profile.HumanDeliveryMemberCount);
+        Assert.Equal(2, profile.AgentDeliveryMemberCount);
+        Assert.Contains("dependency depth", profile.ScheduleBasis, StringComparison.OrdinalIgnoreCase);
+        var noPoints = ArchitecturePlanSamples.MinimalValidPlan() with
+        {
+            Sprints = ArchitecturePlanSamples.MinimalValidPlan().Sprints
+                .Select(sprint => sprint with
+                {
+                    Tickets = sprint.Tickets.Select(ticket => ticket with { EstimatePoints = null }).ToList()
+                }).ToList()
+        };
+        Assert.Null(ArchitecturePlanPolicy.ValidatePlan(noPoints, false, profile));
+    }
+
+    [Fact]
+    public void DeliveryProfile_HumanMemberEnablesConfiguredHumanCadence()
+    {
+        var profile = ArchitecturePlanPolicy.BuildDeliveryProfile(
+            Roster("Human", "Agent"), null, 10);
+
+        Assert.True(profile.UsesHumanEstimates);
+        Assert.Equal(10, profile.SprintLengthDays);
+        Assert.Equal(1, profile.HumanDeliveryMemberCount);
+        Assert.Null(ArchitecturePlanPolicy.ValidatePlan(
+            ArchitecturePlanSamples.MinimalValidPlan(), false, profile));
     }
 
     [Fact]
@@ -840,11 +875,37 @@ Approved product goal: Ship the first release.
             QualityAttributes: ["Maintainability", "Reliability"]);
     }
 
+    private static AgentTestRuntime DesignRuntime() =>
+        new AgentTestRuntime().RegisterCapability<TeamRosterRequest, TeamRosterResponse>(
+            PlatformCapabilities.TeamRosterRead,
+            (_, _) => Task.FromResult(new TeamRosterResponse(new AgentTeamContext(
+                Guid.NewGuid().ToString("D"), "delivery", "Delivery", 1,
+                Guid.NewGuid().ToString("D"), "Architect",
+                [
+                    new AgentTeammate(Guid.NewGuid().ToString("D"), "Developer", "Human", null,
+                        "Software Developer", "Peer", "Active"),
+                    new AgentTeammate(Guid.NewGuid().ToString("D"), "QA", "Agent", null,
+                        "Software QA", "Peer", "Active")
+                ], [], 2, false))));
+
+    private static TeamRosterResponse Roster(string developerType, string qualityType) =>
+        new(new AgentTeamContext(
+            Guid.NewGuid().ToString("D"), "delivery", "Delivery", 1,
+            Guid.NewGuid().ToString("D"), "Architect",
+            [
+                new AgentTeammate(Guid.NewGuid().ToString("D"), "Developer", developerType, null,
+                    "Software Developer", "Peer", "Active"),
+                new AgentTeammate(Guid.NewGuid().ToString("D"), "QA", qualityType, null,
+                    "Software QA", "Peer", "Active")
+            ], [], 2, false));
+
     private static ArchitectureDesignResponse FinalizedDesign(ArchitecturePlan plan) =>
         ArchitecturePlanPolicy.FinalizeDraft(
             ValidDesignRequest(),
             plan,
-            DateTimeOffset.Parse("2026-08-03T00:00:00Z"));
+            DateTimeOffset.Parse("2026-08-03T00:00:00Z"),
+            new ArchitectureDeliveryProfile(
+                "Human-inclusive test team.", 14, true, 1, 2));
 
     private static ArchitecturePublishRequest ValidPublication(ArchitectureDesignResponse design) =>
         new(
@@ -899,6 +960,7 @@ Approved product goal: Ship the first release.
     {
         public Task<ArchitecturePlan> GenerateAsync(
             ArchitectureDesignRequest request,
+            ArchitectureDeliveryProfile deliveryProfile,
             AgentRuntimeContext context,
             AgentSettings settings,
             CancellationToken cancellationToken) =>
@@ -911,6 +973,7 @@ Approved product goal: Ship the first release.
 
         public Task<ArchitecturePlan> GenerateAsync(
             ArchitectureDesignRequest request,
+            ArchitectureDeliveryProfile deliveryProfile,
             AgentRuntimeContext context,
             AgentSettings settings,
             CancellationToken cancellationToken)

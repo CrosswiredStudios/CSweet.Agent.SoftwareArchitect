@@ -4,7 +4,7 @@
   "kind": "agent",
   "id": "com.csweet.software-architect",
   "name": "C-Sweet Software Architect",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "publisher": {
     "id": "com.csweet",
     "name": "C-Sweet"
@@ -213,19 +213,32 @@
       "outputSchema": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["planId", "planHash", "boardId", "productGoal", "plan", "preparedAt"],
+        "required": ["planId", "planHash", "boardId", "productGoal", "plan", "preparedAt", "deliveryProfile"],
         "properties": {
           "planId": { "type": "string", "format": "uuid" },
           "planHash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
           "boardId": { "type": "string", "format": "uuid" },
           "productGoal": { "type": "string" },
           "plan": { "$ref": "#/$defs/architecturePlan" },
-          "preparedAt": { "type": "string", "format": "date-time" }
+          "preparedAt": { "type": "string", "format": "date-time" },
+          "deliveryProfile": { "$ref": "#/$defs/deliveryProfile" }
         },
         "$defs": {
           "stringArray": {
             "type": "array",
             "items": { "type": "string" }
+          },
+          "deliveryProfile": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["scheduleBasis", "sprintLengthDays", "usesHumanEstimates", "humanDeliveryMemberCount", "agentDeliveryMemberCount"],
+            "properties": {
+              "scheduleBasis": { "type": "string", "minLength": 1 },
+              "sprintLengthDays": { "type": "integer", "minimum": 1, "maximum": 30 },
+              "usesHumanEstimates": { "type": "boolean" },
+              "humanDeliveryMemberCount": { "type": "integer", "minimum": 0 },
+              "agentDeliveryMemberCount": { "type": "integer", "minimum": 0 }
+            }
           },
           "component": {
             "type": "object",
@@ -310,7 +323,7 @@
               "tests": { "$ref": "#/$defs/stringArray" },
               "dependencies": { "$ref": "#/$defs/stringArray" },
               "migrationAndRollback": { "type": "string" },
-              "estimatePoints": { "type": "number", "exclusiveMinimum": 0, "maximum": 100 }
+              "estimatePoints": { "type": ["number", "null"], "exclusiveMinimum": 0, "maximum": 100 }
             }
           },
           "sprint": {
@@ -387,8 +400,7 @@
         "additionalProperties": false,
         "required": [
           "boardId", "design", "approval", "idempotencyKey",
-          "repositoryId", "firstSprintSequence",
-          "accountableOrganizationUserId", "developerInstallationId", "qualityInstallationId"
+          "repositoryId", "firstSprintSequence", "accountableOrganizationUserId"
         ],
         "properties": {
           "boardId": { "type": "string", "format": "uuid" },
@@ -407,17 +419,28 @@
             "uniqueItems": true,
             "items": { "type": "string", "format": "uuid" }
           },
+          "developerAssignments": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": { "$ref": "#/$defs/assignment" }
+          },
+          "qualityAssignments": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": { "$ref": "#/$defs/assignment" }
+          },
           "design": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["planId", "planHash", "boardId", "productGoal", "plan", "preparedAt"],
+            "required": ["planId", "planHash", "boardId", "productGoal", "plan", "preparedAt", "deliveryProfile"],
             "properties": {
               "planId": { "type": "string", "format": "uuid" },
               "planHash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
               "boardId": { "type": "string", "format": "uuid" },
               "productGoal": { "type": "string" },
               "plan": { "$ref": "#/$defs/architecturePlan" },
-              "preparedAt": { "type": "string", "format": "date-time" }
+              "preparedAt": { "type": "string", "format": "date-time" },
+              "deliveryProfile": { "$ref": "#/$defs/deliveryProfile" }
             }
           },
           "approval": {
@@ -436,6 +459,28 @@
         },
         "$defs": {
           "stringArray": { "type": "array", "items": { "type": "string" } },
+          "assignment": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["principalKind", "organizationUserId", "agentInstallationId"],
+            "properties": {
+              "principalKind": { "enum": ["Human", "AgentInstallation"] },
+              "organizationUserId": { "type": ["string", "null"], "format": "uuid" },
+              "agentInstallationId": { "type": ["string", "null"], "format": "uuid" }
+            }
+          },
+          "deliveryProfile": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["scheduleBasis", "sprintLengthDays", "usesHumanEstimates", "humanDeliveryMemberCount", "agentDeliveryMemberCount"],
+            "properties": {
+              "scheduleBasis": { "type": "string", "minLength": 1 },
+              "sprintLengthDays": { "type": "integer", "minimum": 1, "maximum": 30 },
+              "usesHumanEstimates": { "type": "boolean" },
+              "humanDeliveryMemberCount": { "type": "integer", "minimum": 0 },
+              "agentDeliveryMemberCount": { "type": "integer", "minimum": 0 }
+            }
+          },
           "component": {
             "type": "object",
             "additionalProperties": false,
@@ -519,7 +564,7 @@
               "tests": { "$ref": "#/$defs/stringArray" },
               "dependencies": { "$ref": "#/$defs/stringArray" },
               "migrationAndRollback": { "type": "string" },
-              "estimatePoints": { "type": "number", "exclusiveMinimum": 0, "maximum": 100 }
+              "estimatePoints": { "type": ["number", "null"], "exclusiveMinimum": 0, "maximum": 100 }
             }
           },
           "sprint": {
