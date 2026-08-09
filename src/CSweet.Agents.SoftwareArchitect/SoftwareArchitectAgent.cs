@@ -89,6 +89,23 @@ public sealed class SoftwareArchitectAgent : CSweetAgentBase
                 description: "Optional architecture style guidance that cannot expand authority.",
                 placeholder: "Example: Prefer modular monoliths and record ADRs for cross-boundary decisions.");
 
+    public override async Task<PersonalTodoResult> HandlePersonalTodoAsync(
+        PersonalTodoItem item, AgentRuntimeContext context, CancellationToken cancellationToken)
+    {
+        if (item.Mentions.Count > 0)
+            return PersonalTodoResult.Blocked(
+                "The Software Architect cannot contact mentioned recipients as part of personal queue work without existing communication authority.");
+        var response = await GenerateConversationResponseAsync(
+            new AssistantCapabilityInput(
+                Settings.GetGuid("llmProviderId") ?? Guid.Empty,
+                (item.SourceConversationId ?? item.Id).ToString("D"),
+                $"Claimed architecture task: {item.Title}\n\n{item.Description}",
+                new Dictionary<string, string> { ["personalTodoItemId"] = item.Id.ToString("D") },
+                MessageId: item.SourceMessageId ?? Guid.Empty),
+            SoftwareArchitectProfile.ConverseCapability, context, cancellationToken);
+        return PersonalTodoResult.Completed(response);
+    }
+
     public override async Task HandleEventAsync(
         AgentEventEnvelope message,
         AgentRuntimeContext context,

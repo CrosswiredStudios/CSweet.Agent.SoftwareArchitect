@@ -54,6 +54,14 @@ public sealed class ManifestTests
 
         Assert.Equal(
             [
+                PersonalTodoCapabilities.Read,
+                PersonalTodoCapabilities.Add,
+                PersonalTodoCapabilities.Reorder,
+                PersonalTodoCapabilities.Requeue,
+                PersonalTodoCapabilities.Claim,
+                PersonalTodoCapabilities.Complete,
+                PersonalTodoCapabilities.Block,
+                PersonalTodoCapabilities.Release,
                 PlatformCapabilities.LlmChatStream,
                 PlatformCapabilities.BusinessProfileRead,
                 PlatformCapabilities.OrganizationSnapshotRead,
@@ -84,7 +92,8 @@ public sealed class ManifestTests
         Assert.Empty(root.GetProperty("webAccess").GetProperty("rules").EnumerateArray());
         Assert.Equal("None", root.GetProperty("runtime").GetProperty("workspaceAccess").GetString());
         Assert.Equal(
-            [AgentLifecycleEvents.Onboarded, SoftwareArchitectProfile.UserMessageReceivedEvent,
+            [PersonalTodoEvents.Available, CommunicationEvents.MessageMentioned,
+                AgentLifecycleEvents.Onboarded, SoftwareArchitectProfile.UserMessageReceivedEvent,
                 AgentCoordinationEvents.TurnRequested],
             root.GetProperty("events").GetProperty("subscribes")
                 .EnumerateArray().Select(x => x.GetString()!).ToArray());
