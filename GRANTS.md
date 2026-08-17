@@ -28,7 +28,7 @@ authoritative.
 
 - `work.board.read`, `work.item.read`, `work.sprint.read`, and `work.sprint.report.read` provide
   design context.
-- `work.item.create` and `work.item.estimate` publish approved developer-ready work.
+- `work.item.create` and `work.item.estimate` publish planning drafts; `work.item.delivery.finalize` attaches approved executable delivery details, and `work.item.move` promotes only dependency-ready first-sprint work.
 - `work.sprint.create` and `work.sprint.scope.manage` publish planned increments.
 
 ## Source-control governance

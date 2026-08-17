@@ -263,10 +263,21 @@ Product Manager: please reconcile these constraints with the product outcome and
         if (board.Board.IsArchived)
             return AgentWorkResult.Failure(
                 "The authorized board is archived and cannot accept architecture work.");
-        var assignmentPoolError = await ValidateAssignmentPoolsAsync(
-            input, board.Board, context, cancellationToken);
-        if (assignmentPoolError is not null)
-            return AgentWorkResult.Failure(assignmentPoolError);
+        var deliveryReady = input.RepositoryId != Guid.Empty;
+        var readyForDevelopmentColumnId = deliveryReady
+            ? board.Columns.SingleOrDefault(x =>
+                x.Name.Equals("Ready For Development", StringComparison.OrdinalIgnoreCase))?.Id
+            : null;
+        if (deliveryReady && !readyForDevelopmentColumnId.HasValue)
+            return AgentWorkResult.Failure(
+                "The approved software board has no Ready For Development column.");
+        if (deliveryReady)
+        {
+            var assignmentPoolError = await ValidateAssignmentPoolsAsync(
+                input, board.Board, context, cancellationToken);
+            if (assignmentPoolError is not null)
+                return AgentWorkResult.Failure(assignmentPoolError);
+        }
         await context.ReportProgressAsync(
             new { stage = "publishing", message = "Publishing the approved architecture plan.", design.PlanId },
             cancellationToken);
@@ -326,6 +337,7 @@ Product Manager: please reconcile these constraints with the product outcome and
             }))
             .ToDictionary(x => x.Ticket.Key, StringComparer.OrdinalIgnoreCase);
         var itemIds = new Dictionary<string, Guid>(StringComparer.OrdinalIgnoreCase);
+        var earliestSprintOrdinal = plan.Sprints.Min(x => x.Ordinal);
         while (itemIds.Count < ticketPlans.Count)
         {
             var ready = ticketPlans.Values
@@ -341,12 +353,7 @@ Product Manager: please reconcile these constraints with the product outcome and
                 var ticketPlan = entry.Ticket;
                 var ticketKey = NormalizeKey(ticketPlan.Key);
                 var loadWeight = ticketPlan.EstimatePoints ?? 1m;
-                var developerAssignment = ArchitecturePlanPolicy.AssignLeastLoaded(
-                    developerPool, developerLoad, loadWeight);
-                var qualityAssignment = ArchitecturePlanPolicy.AssignLeastLoaded(
-                    qualityPool, qualityLoad, loadWeight);
-                var delivery = new WorkItemDeliverySpecification(
-                    input.RepositoryId,
+                var planning = new WorkItemPlanningSpecification(
                     ticketPlan.Requirements,
                     ticketPlan.AcceptanceCriteria,
                     ticketPlan.Constraints.Concat(
@@ -368,32 +375,55 @@ Product Manager: please reconcile these constraints with the product outcome and
                         entry.Sprint.EndsAt,
                         $"{domainKey}:ticket:{ticketKey}")
                     {
-                        Delivery = delivery,
-                        AccountableOrganizationUserId = input.AccountableOrganizationUserId,
-                        StageAssignments =
-                        [
-                            new WorkStageAssignment(
-                                "development",
-                                developerAssignment.PrincipalKind,
-                                developerAssignment.OrganizationUserId,
-                                developerAssignment.AgentInstallationId),
-                            new WorkStageAssignment(
-                                "quality",
-                                qualityAssignment.PrincipalKind,
-                                qualityAssignment.OrganizationUserId,
-                                qualityAssignment.AgentInstallationId),
-                            new WorkStageAssignment(
-                                "merge-decision",
-                                WorkOrchestrationPrincipalKinds.BoardManager),
-                            new WorkStageAssignment(
-                                "governed-merge",
-                                WorkOrchestrationPrincipalKinds.PlatformAction,
-                                PlatformAction: "source-control.merge.execute.v2")
-                        ]
+                        Planning = planning
                     },
                     cancellationToken);
-                EnsureStableAssignment(item, "development", developerAssignment);
-                EnsureStableAssignment(item, "quality", qualityAssignment);
+                if (deliveryReady)
+                {
+                    var developerAssignment = ArchitecturePlanPolicy.AssignLeastLoaded(
+                        developerPool, developerLoad, loadWeight);
+                    var qualityAssignment = ArchitecturePlanPolicy.AssignLeastLoaded(
+                        qualityPool, qualityLoad, loadWeight);
+                    var delivery = new WorkItemDeliverySpecification(
+                        input.RepositoryId,
+                        planning.Requirements,
+                        planning.AcceptanceCriteria,
+                        planning.Constraints)
+                    {
+                        BaseBranch = input.BaseBranch,
+                        DependencyItemIds = planning.DependencyItemIds
+                    };
+                    item = await context.Platform.Work.FinalizeItemDeliveryAsync(
+                        new FinalizeWorkItemDeliveryRequest(
+                            input.BoardId,
+                            item.Id,
+                            delivery,
+                            input.AccountableOrganizationUserId,
+                            [
+                                new WorkStageAssignment(
+                                    "development",
+                                    developerAssignment.PrincipalKind,
+                                    developerAssignment.OrganizationUserId,
+                                    developerAssignment.AgentInstallationId),
+                                new WorkStageAssignment(
+                                    "quality",
+                                    qualityAssignment.PrincipalKind,
+                                    qualityAssignment.OrganizationUserId,
+                                    qualityAssignment.AgentInstallationId),
+                                new WorkStageAssignment(
+                                    "merge-decision",
+                                    WorkOrchestrationPrincipalKinds.BoardManager),
+                                new WorkStageAssignment(
+                                    "governed-merge",
+                                    WorkOrchestrationPrincipalKinds.PlatformAction,
+                                    PlatformAction: "source-control.merge.execute.v2")
+                            ],
+                            item.Revision,
+                            $"{domainKey}:finalize:{ticketKey}"),
+                        cancellationToken);
+                    EnsureStableAssignment(item, "development", developerAssignment);
+                    EnsureStableAssignment(item, "quality", qualityAssignment);
+                }
                 if (ticketPlan.EstimatePoints is not null)
                     item = await context.Platform.Work.EstimateAsync(
                         new EstimateWorkItemRequest(
@@ -411,6 +441,16 @@ Product Manager: please reconcile these constraints with the product outcome and
                         item.Revision,
                         $"{domainKey}:scope:{ticketKey}"),
                     cancellationToken);
+                if (deliveryReady && entry.Sprint.Ordinal == earliestSprintOrdinal &&
+                    ticketPlan.Dependencies.Count == 0)
+                    item = await context.Platform.Work.MoveItemAsync(
+                        new MoveWorkItemRequest(
+                            input.BoardId,
+                            item.Id,
+                            readyForDevelopmentColumnId!.Value,
+                            item.Revision,
+                            $"{domainKey}:ready:{ticketKey}"),
+                        cancellationToken);
                 itemIds.Add(ticketPlan.Key, item.Id);
                 publishedTickets.Add(
                     new PublishedTicket(
@@ -426,12 +466,17 @@ Product Manager: please reconcile these constraints with the product outcome and
             epic.Id,
             publishedSprints,
             publishedTickets,
-            DateTimeOffset.UtcNow);
+            DateTimeOffset.UtcNow)
+        {
+            DeliveryFinalized = deliveryReady
+        };
         await context.ReportProgressAsync(
             new
             {
                 stage = "published",
-                message = "The approved architecture plan was published.",
+                message = deliveryReady
+                    ? "The approved architecture plan was finalized for delivery."
+                    : "The approved architecture draft was published to the planning board.",
                 design.PlanId,
                 sprintCount = publishedSprints.Count,
                 ticketCount = publishedTickets.Count

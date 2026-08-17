@@ -275,21 +275,22 @@ internal static class ArchitecturePlanPolicy
             return "Approval rationale is required.";
         if (request.Approval.ApprovedAt == default)
             return "Approval time is required.";
-        if (request.RepositoryId == Guid.Empty)
-            return "repositoryId is required for developer-ready tickets.";
         if (request.FirstSprintSequence <= 0)
             return "firstSprintSequence must be positive.";
-        if (request.AccountableOrganizationUserId == Guid.Empty)
+        var deliveryReady = request.RepositoryId != Guid.Empty;
+        if (deliveryReady && string.IsNullOrWhiteSpace(request.BaseBranch))
+            return "baseBranch is required for developer-ready tickets.";
+        if (deliveryReady && request.AccountableOrganizationUserId == Guid.Empty)
             return "accountableOrganizationUserId is required for executable tickets.";
         var developers = NormalizeAssignmentPool(
             request.DeveloperAssignments, request.DeveloperInstallationIds, request.DeveloperInstallationId);
         var quality = NormalizeAssignmentPool(
             request.QualityAssignments, request.QualityInstallationIds, request.QualityInstallationId);
-        if (developers.Count == 0)
+        if (deliveryReady && developers.Count == 0)
             return "At least one Developer assignment is required for executable tickets.";
-        if (quality.Count == 0)
+        if (deliveryReady && quality.Count == 0)
             return "At least one Software QA assignment is required for executable tickets.";
-        if (developers.Intersect(quality).Any())
+        if (deliveryReady && developers.Intersect(quality).Any())
             return "Developer and Software QA assignment pools must use different team members.";
         if (string.IsNullOrWhiteSpace(request.IdempotencyKey))
             return "idempotencyKey is required.";

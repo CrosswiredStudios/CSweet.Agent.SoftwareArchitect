@@ -4,7 +4,7 @@
   "kind": "agent",
   "id": "com.csweet.software-architect",
   "name": "C-Sweet Software Architect",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "publisher": {
     "id": "com.csweet",
     "name": "C-Sweet"
@@ -394,17 +394,17 @@
     },
     {
       "name": "software-architecture.publish-plan.v1",
-      "description": "Publish an explicitly approved architecture plan as planned sprints and developer-ready work.",
+      "description": "Publish an approved planning draft, then finalize the same tickets when repository delivery is approved.",
       "inputSchema": {
         "type": "object",
         "additionalProperties": false,
         "required": [
-          "boardId", "design", "approval", "idempotencyKey",
-          "repositoryId", "firstSprintSequence", "accountableOrganizationUserId"
+          "boardId", "design", "approval", "idempotencyKey", "firstSprintSequence"
         ],
         "properties": {
           "boardId": { "type": "string", "format": "uuid" },
           "repositoryId": { "type": "string", "format": "uuid" },
+          "baseBranch": { "type": "string" },
           "firstSprintSequence": { "type": "integer", "minimum": 1 },
           "accountableOrganizationUserId": { "type": "string", "format": "uuid" },
           "developerInstallationId": { "type": "string", "format": "uuid" },
@@ -805,9 +805,19 @@
       "purpose": "Publish approved architecture Epics, Stories, and prerequisite Tasks"
     },
     {
+      "name": "work.item.delivery.finalize",
+      "scope": "board",
+      "purpose": "Attach the approved repository, base branch, accountable owner, and execution assignments to existing planning tickets"
+    },
+    {
       "name": "work.item.estimate",
       "scope": "board",
       "purpose": "Estimate approved leaf implementation tickets"
+    },
+    {
+      "name": "work.item.move",
+      "scope": "board",
+      "purpose": "Promote dependency-ready work from the earliest finalized sprint to Ready For Development"
     },
     {
       "name": "work.sprint.read",

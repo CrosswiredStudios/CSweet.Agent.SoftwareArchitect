@@ -67,6 +67,7 @@ public sealed class SoftwareArchitectAgentTests
             "publish-1")
         {
             RepositoryId = Guid.NewGuid(),
+            BaseBranch = "main",
             FirstSprintSequence = 1
         };
 
@@ -202,8 +203,10 @@ public sealed class SoftwareArchitectAgentTests
         var itemKeys = new Dictionary<string, WorkItem>(StringComparer.Ordinal);
         var sprintKeys = new Dictionary<string, WorkSprint>(StringComparer.Ordinal);
         var createRequests = new List<CreateWorkItemRequest>();
+        var finalizeRequests = new List<FinalizeWorkItemDeliveryRequest>();
         var estimateRequests = new List<EstimateWorkItemRequest>();
         var scopeRequests = new List<SetWorkItemSprintRequest>();
+        var moveRequests = new List<MoveWorkItemRequest>();
         var sprintRequests = new List<CreateWorkSprintRequest>();
         var architectEmployeeId = Guid.NewGuid();
         var developerEmployeeId = Guid.NewGuid();
@@ -283,6 +286,22 @@ public sealed class SoftwareArchitectAgentTests
                     }
                     return Task.FromResult(sprint);
                 })
+            .RegisterCapability<FinalizeWorkItemDeliveryRequest, WorkItem>(
+                WorkItemCapabilities.FinalizeDelivery,
+                (request, _) =>
+                {
+                    finalizeRequests.Add(request);
+                    var item = itemKeys.Values.Single(x => x.Id == request.ItemId);
+                    var finalized = item with
+                    {
+                        Delivery = request.Delivery,
+                        AccountableOrganizationUserId = request.AccountableOrganizationUserId,
+                        StageAssignments = request.StageAssignments,
+                        Revision = item.Revision + 1
+                    };
+                    itemKeys[itemKeys.Single(x => x.Value.Id == item.Id).Key] = finalized;
+                    return Task.FromResult(finalized);
+                })
             .RegisterCapability<EstimateWorkItemRequest, WorkItem>(
                 WorkItemCapabilities.Estimate,
                 (request, _) =>
@@ -306,9 +325,29 @@ public sealed class SoftwareArchitectAgentTests
                         SprintId = request.SprintId,
                         Revision = request.ExpectedItemRevision + 1
                     });
+                })
+            .RegisterCapability<MoveWorkItemRequest, WorkItem>(
+                WorkItemCapabilities.Move,
+                (request, _) =>
+                {
+                    moveRequests.Add(request);
+                    var item = itemKeys.Values.Single(x => x.Id == request.ItemId);
+                    return Task.FromResult(item with
+                    {
+                        ColumnId = request.TargetColumnId,
+                        Revision = request.ExpectedRevision + 1
+                    });
                 });
 
         var agent = new SoftwareArchitectAgent();
+        var draft = await runtime.ExecuteCapabilityAsync(
+            agent,
+            SoftwareArchitectProfile.PublishCapability,
+            ValidPublication(design) with
+            {
+                RepositoryId = Guid.Empty,
+                BaseBranch = string.Empty
+            });
         var first = await runtime.ExecuteCapabilityAsync(
             agent,
             SoftwareArchitectProfile.PublishCapability,
@@ -318,14 +357,20 @@ public sealed class SoftwareArchitectAgentTests
             SoftwareArchitectProfile.PublishCapability,
             ValidPublication(design));
 
+        Assert.True(draft.Succeeded);
+        Assert.False(draft.Value!.Value.GetProperty("deliveryFinalized").GetBoolean());
         Assert.True(first.Succeeded);
         Assert.True(second.Succeeded);
         Assert.Equal(2, itemKeys.Count);
         Assert.Single(sprintKeys);
-        Assert.All(createRequests.GroupBy(x => x.IdempotencyKey), group => Assert.Equal(2, group.Count()));
+        Assert.All(createRequests.GroupBy(x => x.IdempotencyKey), group => Assert.Equal(3, group.Count()));
         Assert.All(sprintRequests, request => Assert.Contains(design.PlanId.ToString("N"), request.IdempotencyKey));
         Assert.All(estimateRequests, request => Assert.Equal(5, request.EstimatePoints));
         Assert.All(scopeRequests, request => Assert.NotNull(request.SprintId));
+        Assert.Equal(2, moveRequests.Count);
+        Assert.All(moveRequests, request => Assert.Equal(
+            "Ready For Development",
+            board.Columns.Single(x => x.Id == request.TargetColumnId).Name));
         Assert.Equal(WorkItemKinds.Epic, createRequests[0].Kind);
         Assert.Equal(WorkItemKinds.Story, createRequests[1].Kind);
         Assert.Contains("## Context", createRequests[1].Description);
@@ -334,20 +379,24 @@ public sealed class SoftwareArchitectAgentTests
         Assert.Contains("Negative:", createRequests[1].Description);
         Assert.Contains("Observability:", createRequests[1].Description);
         Assert.Contains("## Migration and rollback", createRequests[1].Description);
+        Assert.NotNull(createRequests[1].Planning);
+        Assert.Null(createRequests[1].Delivery);
+        Assert.Equal(2, finalizeRequests.Count);
         Assert.Equal(
             Guid.Parse("cccccccc-cccc-cccc-cccc-cccccccccccc"),
-            createRequests[1].AccountableOrganizationUserId);
-        Assert.Equal(4, createRequests[1].StageAssignments.Count);
-        Assert.Contains(createRequests[1].StageAssignments, x =>
+            finalizeRequests[0].AccountableOrganizationUserId);
+        Assert.Equal("main", finalizeRequests[0].Delivery.BaseBranch);
+        Assert.Equal(4, finalizeRequests[0].StageAssignments.Count);
+        Assert.Contains(finalizeRequests[0].StageAssignments, x =>
             x.StageKey == "development" &&
             x.AgentInstallationId == Guid.Parse("dddddddd-dddd-dddd-dddd-dddddddddddd"));
-        Assert.Contains(createRequests[1].StageAssignments, x =>
+        Assert.Contains(finalizeRequests[0].StageAssignments, x =>
             x.StageKey == "quality" &&
             x.AgentInstallationId == Guid.Parse("eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee"));
-        Assert.Contains(createRequests[1].StageAssignments, x =>
+        Assert.Contains(finalizeRequests[0].StageAssignments, x =>
             x.StageKey == "merge-decision" &&
             x.PrincipalKind == WorkOrchestrationPrincipalKinds.BoardManager);
-        Assert.Contains(createRequests[1].StageAssignments, x =>
+        Assert.Contains(finalizeRequests[0].StageAssignments, x =>
             x.StageKey == "governed-merge" &&
             x.PlatformAction == "source-control.merge.execute.v2");
 
@@ -920,6 +969,7 @@ Approved product goal: Ship the first release.
             "publish-1")
         {
             RepositoryId = Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"),
+            BaseBranch = "main",
             FirstSprintSequence = 1,
             AccountableOrganizationUserId = Guid.Parse("cccccccc-cccc-cccc-cccc-cccccccccccc"),
             DeveloperInstallationId = Guid.Parse("dddddddd-dddd-dddd-dddd-dddddddddddd"),
@@ -932,7 +982,10 @@ Approved product goal: Ship the first release.
             {
                 TeamId = Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")
             },
-            [new WorkBoardColumn(Guid.NewGuid(), "To Do", "ToDo", 0, "None", null)],
+            [
+                new WorkBoardColumn(Guid.NewGuid(), "Backlog", "ToDo", 0, "None", null),
+                new WorkBoardColumn(Guid.NewGuid(), "Ready For Development", "ToDo", 1, "None", null)
+            ],
             []);
 
     private static WorkItem Item(
