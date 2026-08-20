@@ -1,10 +1,10 @@
 # Software Architect grants
 
-This document describes the minimum authority requested by package version `0.5.0`.
+This document describes the minimum authority requested by package version `0.7.1`.
 
-Durable collaboration uses `communication.coordination.start.v1`,
+The Product Manager starts durable collaboration. The Architect advances it with
 `communication.coordination.respond.v1`, `communication.coordination.read.v1`, and
-`communication.coordination.cancel.v1`. These grants permit only same-organization eligible-agent
+`communication.coordination.cancel.v1`. These grants permit only team-scoped eligible-agent
 sessions and never transfer another participant's work, repository, or publication authority.
 Manifest declarations request authority; installation grants and resource scopes remain
 authoritative.

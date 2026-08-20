@@ -588,8 +588,8 @@ public sealed class SoftwareArchitectAgentTests
         await runtime.DeliverEventAsync(agent, "unknown.event.v1", new { });
         await runtime.DeliverEventAsync(
             agent,
-            SoftwareArchitectProfile.UserMessageReceivedEvent,
-            new UserMessageReceived(
+            CommunicationEvents.MessageReceived,
+            new CommunicationMessageReceivedEvent(
                 Guid.NewGuid(),
                 conversationId.ToString(),
                 senderId.ToString(),
@@ -656,8 +656,8 @@ public sealed class SoftwareArchitectAgentTests
 
         await runtime.DeliverEventAsync(
             new SoftwareArchitectAgent(),
-            SoftwareArchitectProfile.UserMessageReceivedEvent,
-            new UserMessageReceived(
+            CommunicationEvents.MessageReceived,
+            new CommunicationMessageReceivedEvent(
                 Guid.NewGuid(),
                 conversationId.ToString(),
                 senderId.ToString(),
@@ -686,6 +686,7 @@ public sealed class SoftwareArchitectAgentTests
         var turnId = Guid.NewGuid();
         var sessionId = Guid.NewGuid();
         StartAgentCoordinationRequest? started = null;
+        JsonElement? sentToProductManager = null;
         var runtime = new AgentTestRuntime()
             .RegisterCapability<object, CommunicationMessages>(
                 CommunicationCapabilities.ChatRead,
@@ -708,6 +709,23 @@ public sealed class SoftwareArchitectAgentTests
                     ],
                     [new OrganizationRole(productManagerRoleId, "Product Manager", "Owns outcomes.", "[]")],
                     [], [], [], DateTimeOffset.UtcNow)))
+            .RegisterCapability<CreateCommunicationChat, CommunicationAction>(
+                CommunicationCapabilities.ChatCreate,
+                (_, _) => Task.FromResult(new CommunicationAction(
+                    true, null, "Created",
+                    new CommunicationChat(Guid.NewGuid(), "Product Manager", null, true, true,
+                        false, true, DateTimeOffset.UtcNow,
+                        [new CommunicationParticipant(productManagerId, "Product Manager", "Agent", "Product Manager")],
+                        null, null, 0))))
+            .RegisterCapability<object, CommunicationMessage>(
+                CommunicationCapabilities.MessageSend,
+                (request, _) =>
+                {
+                    sentToProductManager = JsonSerializer.SerializeToElement(request);
+                    return Task.FromResult(new CommunicationMessage(
+                        Guid.NewGuid(), 1, Guid.NewGuid(), architectId, "Architect", "Agent",
+                        "Sent", DateTimeOffset.UtcNow) with { ChatTurnId = Guid.NewGuid() });
+                })
             .RegisterCapability<StartAgentCoordinationRequest, AgentCoordinationSession>(
                 CommunicationCapabilities.CoordinationStart,
                 (request, _) =>
@@ -725,18 +743,18 @@ public sealed class SoftwareArchitectAgentTests
 
         await runtime.DeliverEventAsync(
             new SoftwareArchitectAgent(),
-            SoftwareArchitectProfile.UserMessageReceivedEvent,
-            new UserMessageReceived(
+            CommunicationEvents.MessageReceived,
+            new CommunicationMessageReceivedEvent(
                 Guid.NewGuid(), conversationId.ToString("D"), ceoId.ToString("D"),
                 "Please reach out to the Product Manager and populate the kanban board with tickets to get the demo completed.",
                 null, turnId, 0, messageId));
 
-        Assert.NotNull(started);
-        Assert.Equal(productManagerId, started!.TargetOrganizationUserId);
-        Assert.Equal(turnId, started.SourceChatTurnId);
-        Assert.Equal(messageId, started.SourceMessageId);
-        Assert.Contains("kanban board", started.Objective, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains(sessionId.ToString("D"), runtime.Progress[0].GetProperty("delta").GetString());
+        Assert.Null(started);
+        Assert.NotNull(sentToProductManager);
+        Assert.Contains("ready", sentToProductManager!.Value.GetProperty("content").GetString(),
+            StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("owns starting", runtime.Progress[0].GetProperty("delta").GetString(),
+            StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -795,15 +813,14 @@ Approved product goal: Ship the first release.
 
         await runtime.DeliverEventAsync(
             new SoftwareArchitectAgent(),
-            SoftwareArchitectProfile.UserMessageReceivedEvent,
-            new UserMessageReceived(
+            CommunicationEvents.MessageReceived,
+            new CommunicationMessageReceivedEvent(
                 Guid.NewGuid(), conversationId.ToString("D"), productManagerId.ToString("D"),
                 kickoff, null, turnId, 0, messageId));
 
-        Assert.NotNull(started);
-        Assert.Equal(productManagerId, started!.TargetOrganizationUserId);
-        Assert.Contains("junior-ready", started.SuccessCriteria[1], StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("draft", runtime.Progress[0].GetProperty("delta").GetString(), StringComparison.OrdinalIgnoreCase);
+        Assert.Null(started);
+        Assert.Contains("Ready", runtime.Progress[0].GetProperty("delta").GetString(), StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Product Manager", runtime.Progress[0].GetProperty("delta").GetString(), StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -907,8 +924,8 @@ Approved product goal: Ship the first release.
         Assert.Single(sent.Select(x => x.GetProperty("idempotencyKey").GetString()).Distinct());
         Assert.Equal($"software-architect:onboarding:{eventId:N}",
             sent[0].GetProperty("idempotencyKey").GetString());
-        Assert.Contains("delivery-planning kickoff", sent[0].GetProperty("content").GetString(), StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("design capability", sent[0].GetProperty("content").GetString(), StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("onboarded", sent[0].GetProperty("content").GetString(), StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("ready to begin", sent[0].GetProperty("content").GetString(), StringComparison.OrdinalIgnoreCase);
         Assert.All(completed, request => Assert.Equal(eventId, request.EventId));
     }
 

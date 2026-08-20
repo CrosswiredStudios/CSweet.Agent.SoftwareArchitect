@@ -69,7 +69,6 @@ public sealed class ManifestTests
                 CommunicationCapabilities.ChatRead,
                 CommunicationCapabilities.ChatCreate,
                 CommunicationCapabilities.MessageSend,
-                CommunicationCapabilities.CoordinationStart,
                 CommunicationCapabilities.CoordinationRespond,
                 CommunicationCapabilities.CoordinationRead,
                 CommunicationCapabilities.CoordinationCancel,
@@ -95,7 +94,7 @@ public sealed class ManifestTests
         Assert.Equal("None", root.GetProperty("runtime").GetProperty("workspaceAccess").GetString());
         Assert.Equal(
             [PersonalTodoEvents.Available, CommunicationEvents.MessageMentioned,
-                AgentLifecycleEvents.Onboarded, SoftwareArchitectProfile.UserMessageReceivedEvent,
+                AgentLifecycleEvents.Onboarded, CommunicationEvents.MessageReceived,
                 AgentCoordinationEvents.TurnRequested],
             root.GetProperty("events").GetProperty("subscribes")
                 .EnumerateArray().Select(x => x.GetString()!).ToArray());

@@ -81,6 +81,10 @@ internal static class ArchitecturePlanPolicy
         if (plan.Sprints.SelectMany(x => x.Tickets).Count() > MaximumTickets)
             return $"A plan may contain at most {MaximumTickets} tickets.";
 
+        var isProvisional = deliveryProfile is not null &&
+                            deliveryProfile.HumanDeliveryMemberCount == 0 &&
+                            deliveryProfile.AgentDeliveryMemberCount == 0;
+
         var componentNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var component in plan.Components)
         {
@@ -138,6 +142,8 @@ internal static class ArchitecturePlanPolicy
                 return "Sprint ordinals must be positive and unique.";
             if (string.IsNullOrWhiteSpace(sprint.Name) || string.IsNullOrWhiteSpace(sprint.Goal))
                 return "Every sprint requires a name and demonstrable increment goal.";
+            if (isProvisional && (sprint.StartsAt is not null || sprint.EndsAt is not null))
+                return $"Provisional sprint {sprint.Ordinal} must remain undated until delivery staffing is authoritative.";
             if (sprint.StartsAt is not null && sprint.EndsAt is not null &&
                 sprint.EndsAt <= sprint.StartsAt)
                 return $"Sprint {sprint.Ordinal} must end after it starts.";
@@ -173,9 +179,9 @@ internal static class ArchitecturePlanPolicy
                     return $"Ticket '{ticket.Key}' requires test guidance.";
                 if (string.IsNullOrWhiteSpace(ticket.MigrationAndRollback))
                     return $"Ticket '{ticket.Key}' requires migration and rollback guidance.";
-                if ((deliveryProfile?.UsesHumanEstimates ?? true) && ticket.EstimatePoints is null)
+                if (!isProvisional && (deliveryProfile?.UsesHumanEstimates ?? true) && ticket.EstimatePoints is null)
                     return $"Ticket '{ticket.Key}' requires a positive human-inclusive story-point estimate.";
-                if (deliveryProfile?.UsesHumanEstimates == false && ticket.EstimatePoints is not null)
+                if ((isProvisional || deliveryProfile?.UsesHumanEstimates == false) && ticket.EstimatePoints is not null)
                     return $"Ticket '{ticket.Key}' must not use human story-point estimates for an agent-only team.";
                 if (ticket.EstimatePoints is <= 0 or > 100)
                     return $"Ticket '{ticket.Key}' estimatePoints must be greater than 0 and at most 100 when provided.";
@@ -257,8 +263,6 @@ internal static class ArchitecturePlanPolicy
             request.Design.DeliveryProfile.SprintLengthDays is < 1 or > 30 ||
             request.Design.DeliveryProfile.HumanDeliveryMemberCount < 0 ||
             request.Design.DeliveryProfile.AgentDeliveryMemberCount < 0 ||
-            request.Design.DeliveryProfile.HumanDeliveryMemberCount +
-            request.Design.DeliveryProfile.AgentDeliveryMemberCount == 0 ||
             request.Design.DeliveryProfile.UsesHumanEstimates !=
             (request.Design.DeliveryProfile.HumanDeliveryMemberCount > 0))
             return "The approved delivery profile is invalid.";
@@ -288,9 +292,7 @@ internal static class ArchitecturePlanPolicy
             request.QualityAssignments, request.QualityInstallationIds, request.QualityInstallationId);
         if (deliveryReady && developers.Count == 0)
             return "At least one Developer assignment is required for executable tickets.";
-        if (deliveryReady && quality.Count == 0)
-            return "At least one Software QA assignment is required for executable tickets.";
-        if (deliveryReady && developers.Intersect(quality).Any())
+        if (deliveryReady && quality.Count > 0 && developers.Intersect(quality).Any())
             return "Developer and Software QA assignment pools must use different team members.";
         if (string.IsNullOrWhiteSpace(request.IdempotencyKey))
             return "idempotencyKey is required.";
@@ -308,8 +310,12 @@ internal static class ArchitecturePlanPolicy
                          NormalizeRole(x.TeamRole ?? x.CompanyRole ?? string.Empty) == NormalizeRole("Software QA")))
             .ToList() ?? [];
         if (deliveryMembers.Count == 0)
-            throw new ArchitectureDesignException(
-                "The active approved Developer and Software QA team composition is required before scheduling delivery.");
+            return new ArchitectureDeliveryProfile(
+                "Provisional pre-hire planning; leave dates, estimates, repository delivery details, and worker assignments unset.",
+                requestedSprintLengthDays ?? defaultHumanSprintLengthDays,
+                false,
+                0,
+                0);
         var humans = deliveryMembers.Count(x =>
             x.EmployeeType.Equals("Human", StringComparison.OrdinalIgnoreCase));
         var agents = deliveryMembers.Count(x =>

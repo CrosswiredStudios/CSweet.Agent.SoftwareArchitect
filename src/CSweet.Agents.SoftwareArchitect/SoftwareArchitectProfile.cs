@@ -5,14 +5,13 @@ namespace CSweet.Agents.SoftwareArchitect;
 public static class SoftwareArchitectProfile
 {
     public const string AgentId = "com.csweet.software-architect";
-    public const string Version = "0.7.0";
+    public const string Version = "0.7.1";
     public const string DisplayName = "C-Sweet Software Architect";
     public const string DesignCapability = "software-architecture.design.v1";
     public const string PublishCapability = "software-architecture.publish-plan.v1";
     public const string ConverseCapability = AssistantCapabilities.Converse;
     public const string SummarizeCapability = AssistantCapabilities.SummarizeActivity;
     public const string PlanWorkCapability = AssistantCapabilities.PlanWork;
-    public const string UserMessageReceivedEvent = "com.csweet.user.message.received.v1";
 
     public const int MaximumIterationsPerRequest = 16;
     public const int DefaultContextWindowTokens = 128_000;
@@ -44,7 +43,9 @@ Architecture principles:
 - Make system boundaries, dependencies, interface contracts, data ownership, failure behavior,
   security controls, observability, migration, rollout, rollback, and testing explicit.
 - Separate facts, assumptions, risks, alternatives, and unresolved product decisions.
-- Every sprint must produce a coherent, demonstrable, independently testable increment. Derive
+- Before delivery staff are hired, produce a provisional dependency-ordered backlog without dates,
+  estimates, repository claims, or assignments. Every started sprint must produce a coherent,
+  demonstrable, independently testable increment. Derive
   dates and estimates from the active delivery-team composition. Agent-only teams use dependency
   depth, safe parallelism, and short execution windows; never apply human story-point or multi-week
   velocity assumptions to agents. Human-inclusive teams may use story points and human cadence.

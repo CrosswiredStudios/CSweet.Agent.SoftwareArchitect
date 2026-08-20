@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using CSweet.Agent.SDK;
@@ -118,7 +119,7 @@ public sealed class SoftwareArchitectAgent : CSweetAgentBase
             return;
         }
 
-        if (message.EventType == SoftwareArchitectProfile.UserMessageReceivedEvent)
+        if (message.EventType == CommunicationEvents.MessageReceived)
             await HandleConversationMessageAsync(message, context, cancellationToken);
     }
 
@@ -306,13 +307,18 @@ Product Manager: please reconcile these constraints with the product outcome and
         var qualityLoad = qualityPool.ToDictionary(ArchitecturePlanPolicy.AssignmentKey, _ => 0m);
         var sprintIds = new Dictionary<int, Guid>();
         var fallbackStart = NextPlanningBoundary(design.PreparedAt, design.DeliveryProfile.UsesHumanEstimates);
+        var provisional = design.DeliveryProfile.HumanDeliveryMemberCount == 0 &&
+                          design.DeliveryProfile.AgentDeliveryMemberCount == 0;
         foreach (var sprintPlan in plan.Sprints.OrderBy(x => x.Ordinal))
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var startsAt = sprintPlan.StartsAt ?? fallbackStart.AddDays(
-                (sprintPlan.Ordinal - 1) * design.DeliveryProfile.SprintLengthDays);
-            var endsAt = sprintPlan.EndsAt ??
-                         startsAt.AddDays(design.DeliveryProfile.SprintLengthDays);
+            var startsAt = provisional
+                ? sprintPlan.StartsAt
+                : sprintPlan.StartsAt ?? fallbackStart.AddDays(
+                    (sprintPlan.Ordinal - 1) * design.DeliveryProfile.SprintLengthDays);
+            var endsAt = provisional
+                ? sprintPlan.EndsAt
+                : sprintPlan.EndsAt ?? startsAt!.Value.AddDays(design.DeliveryProfile.SprintLengthDays);
             var sprint = await context.Platform.Work.CreateSprintAsync(
                 new CreateWorkSprintRequest(
                     input.BoardId,
@@ -382,8 +388,9 @@ Product Manager: please reconcile these constraints with the product outcome and
                 {
                     var developerAssignment = ArchitecturePlanPolicy.AssignLeastLoaded(
                         developerPool, developerLoad, loadWeight);
-                    var qualityAssignment = ArchitecturePlanPolicy.AssignLeastLoaded(
-                        qualityPool, qualityLoad, loadWeight);
+                    var qualityAssignment = qualityPool.Count > 0
+                        ? ArchitecturePlanPolicy.AssignLeastLoaded(qualityPool, qualityLoad, loadWeight)
+                        : null;
                     var delivery = new WorkItemDeliverySpecification(
                         input.RepositoryId,
                         planning.Requirements,
@@ -399,17 +406,13 @@ Product Manager: please reconcile these constraints with the product outcome and
                             item.Id,
                             delivery,
                             input.AccountableOrganizationUserId,
-                            [
+                            new[]
+                            {
                                 new WorkStageAssignment(
                                     "development",
                                     developerAssignment.PrincipalKind,
                                     developerAssignment.OrganizationUserId,
                                     developerAssignment.AgentInstallationId),
-                                new WorkStageAssignment(
-                                    "quality",
-                                    qualityAssignment.PrincipalKind,
-                                    qualityAssignment.OrganizationUserId,
-                                    qualityAssignment.AgentInstallationId),
                                 new WorkStageAssignment(
                                     "merge-decision",
                                     WorkOrchestrationPrincipalKinds.BoardManager),
@@ -417,12 +420,19 @@ Product Manager: please reconcile these constraints with the product outcome and
                                     "governed-merge",
                                     WorkOrchestrationPrincipalKinds.PlatformAction,
                                     PlatformAction: "source-control.merge.execute.v2")
-                            ],
+                            }.Concat(qualityAssignment is null
+                                ? []
+                                : [new WorkStageAssignment(
+                                    "quality",
+                                    qualityAssignment.PrincipalKind,
+                                    qualityAssignment.OrganizationUserId,
+                                    qualityAssignment.AgentInstallationId)]).ToArray(),
                             item.Revision,
-                            $"{domainKey}:finalize:{ticketKey}"),
+                            $"{domainKey}:finalize:{ticketKey}:{AssignmentFingerprint(developerAssignment, qualityAssignment)}"),
                         cancellationToken);
                     EnsureStableAssignment(item, "development", developerAssignment);
-                    EnsureStableAssignment(item, "quality", qualityAssignment);
+                    if (qualityAssignment is not null)
+                        EnsureStableAssignment(item, "quality", qualityAssignment);
                 }
                 if (ticketPlan.EstimatePoints is not null)
                     item = await context.Platform.Work.EstimateAsync(
@@ -543,6 +553,15 @@ Product Manager: please reconcile these constraints with the product outcome and
 
     private static string NormalizeRole(string value) =>
         new(value.Trim().ToLowerInvariant().Where(char.IsLetterOrDigit).ToArray());
+
+    private static string AssignmentFingerprint(
+        ArchitectureAssignmentPrincipal developer,
+        ArchitectureAssignmentPrincipal? quality)
+    {
+        var value = ArchitecturePlanPolicy.AssignmentKey(developer) + "|" +
+                    (quality is null ? "quality-unassigned" : ArchitecturePlanPolicy.AssignmentKey(quality));
+        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value)))[..16].ToLowerInvariant();
+    }
 
     private static void EnsureStableAssignment(
         WorkItem item,
@@ -675,26 +694,8 @@ work-board mutations from conversation.
                 [target.Id]),
             cancellationToken);
 
-        var objective = organization.Objectives
-            .FirstOrDefault(x => x.Status is not ("Completed" or "Cancelled"));
-        var opening = objective is null
-            ? """
-I’m ready to own the system design and incremental implementation plan. What approved product
-outcome and acceptance criteria should I treat as authoritative?
-"""
-            : $"""
-I reviewed the current organization context. I’ll begin from **{objective.Title}** and translate
-approved requirements into a maintainable system design, explicit tradeoffs, and independently
-testable sprint increments. I’ll return unresolved product decisions to you before publishing any
-work.
-""";
-        opening += """
-
-Treat this as the delivery-planning kickoff. Reconcile the approved team board and invoke my typed
-design capability with the approved product outcome and acceptance criteria once the shared
-repository and base branch are selected. I will return unresolved product decisions before any
-plan is published as independently testable sprint increments and developer-ready tickets.
-""";
+        const string opening =
+            "I’m onboarded and ready to begin working with you on the product plan and kanban backlog.";
         _ = await context.Platform.Communication.SendMessageAsync(
             chat.Id,
             opening,
@@ -708,7 +709,7 @@ plan is published as independently testable sprint increments and developer-read
         AgentRuntimeContext context,
         CancellationToken cancellationToken)
     {
-        var received = DeserializePayload<UserMessageReceived>(message.Data);
+        var received = DeserializePayload<CommunicationMessageReceivedEvent>(message.Data);
         if (received is null || received.MessageId == Guid.Empty ||
             !Guid.TryParse(received.ConversationId, out var conversationId))
             return;
@@ -736,25 +737,8 @@ plan is published as independently testable sprint increments and developer-read
 
         if (IsProductManagerKickoff(received.Message, senderId, organization))
         {
-            var session = await context.Platform.Communication.StartCoordinationAsync(
-                new StartAgentCoordinationRequest(
-                    senderId,
-                    "Approved product-team release planning",
-                    received.Message.Trim(),
-                    [
-                        "Approved product requirements, priority, non-goals, and acceptance criteria are explicit.",
-                        "The architecture plan contains bounded sequential sprints and junior-ready independently testable tickets.",
-                        "Developer and QA stage assignments are valid and only the earliest sprint is actionable.",
-                        "Publication occurs only after repository, branch, and Product Manager approval gates are satisfied."
-                    ],
-                    received.Message.Trim(),
-                    conversationId,
-                    received.TurnId,
-                    received.MessageId,
-                    $"software-team-planning:{received.MessageId:N}"),
-                cancellationToken);
             await PublishConversationResponseAsync(received,
-                $"I started the durable release-planning collaboration with the Product Manager. Session `{session.Id:D}` will draft before repository selection when possible, but will not publish or assign executable work until every governance gate is satisfied.",
+                "Ready. I’ll provide the technical decomposition, dependencies, risks, and implementation sequence through the Product Manager’s planning session.",
                 context, cancellationToken);
             return;
         }
@@ -770,24 +754,13 @@ plan is published as independently testable sprint increments and developer-read
                 return;
             }
 
-            var session = await context.Platform.Communication.StartCoordinationAsync(
-                new StartAgentCoordinationRequest(
-                    productManager.Id,
-                    "Architect and Product Manager delivery planning",
-                    received.Message.Trim(),
-                    [
-                        "Product requirements, priority, and acceptance criteria are explicit.",
-                        "Technical decisions, dependencies, quality attributes, and developer-ready guidance are explicit.",
-                        "The kanban board is reconciled or a truthful blocker identifies the missing decision or grant."
-                    ],
-                    received.Message.Trim(),
-                    conversationId,
-                    received.TurnId,
-                    received.MessageId,
-                    $"software-architect:product-manager:{received.MessageId:N}"),
+            _ = await context.Platform.Communication.SendDirectAgentMessageAsync(
+                productManager.Id,
+                "I’m ready to continue the product and architecture planning session when you start it.",
+                $"software-architect:planning-ready:{message.EventId:N}",
                 cancellationToken);
             await PublishConversationResponseAsync(received,
-                $"I started a private collaboration with {productManager.DisplayName}. I'll post one concise result here when it completes or blocks. Session `{session.Id:D}`.",
+                $"I notified {productManager.DisplayName} that I’m ready. The Product Manager owns starting the planning session.",
                 context, cancellationToken);
             return;
         }
@@ -808,7 +781,7 @@ plan is published as independently testable sprint increments and developer-read
     }
 
     private static async Task PublishConversationResponseAsync(
-        UserMessageReceived received,
+        CommunicationMessageReceivedEvent received,
         string response,
         AgentRuntimeContext context,
         CancellationToken cancellationToken)

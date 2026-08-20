@@ -168,16 +168,6 @@ public sealed record ProposedAction(
     string ParametersJson,
     bool RequiresApproval);
 
-public sealed record UserMessageReceived(
-    Guid ProviderProfileId,
-    string ConversationId,
-    string UserId,
-    string Message,
-    IReadOnlyDictionary<string, string>? Context,
-    Guid TurnId = default,
-    int Attempt = 0,
-    Guid MessageId = default);
-
 public sealed record AssistantResponseChunk(
     string ConversationId,
     int Sequence,

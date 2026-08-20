@@ -4,7 +4,7 @@
   "kind": "agent",
   "id": "com.csweet.software-architect",
   "name": "C-Sweet Software Architect",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "publisher": {
     "id": "com.csweet",
     "name": "C-Sweet"
@@ -751,37 +751,32 @@
     },
     {
       "name": "communication.chat.read.v1",
-      "scope": "organization",
+      "scope": "team",
       "purpose": "Verify and read an authorized architecture planning conversation"
     },
     {
       "name": "communication.chat.create.v1",
-      "scope": "organization",
+      "scope": "team",
       "purpose": "Open or reuse a private conversation with the accountable Product or Project Manager"
     },
     {
       "name": "communication.message.send.v1",
-      "scope": "organization",
+      "scope": "team",
       "purpose": "Send idempotent architecture clarifications, risks, decisions, and publication status"
     },
     {
-      "name": "communication.coordination.start.v1",
-      "scope": "organization",
-      "purpose": "Start a bounded durable collaboration with an eligible organization agent"
-    },
-    {
       "name": "communication.coordination.respond.v1",
-      "scope": "organization",
+      "scope": "team",
       "purpose": "Submit one structured architecture collaboration disposition"
     },
     {
       "name": "communication.coordination.read.v1",
-      "scope": "organization",
+      "scope": "team",
       "purpose": "Read a collaboration session in which this Architect participates"
     },
     {
       "name": "communication.coordination.cancel.v1",
-      "scope": "organization",
+      "scope": "team",
       "purpose": "Stop a collaboration in which this Architect participates"
     },
     {

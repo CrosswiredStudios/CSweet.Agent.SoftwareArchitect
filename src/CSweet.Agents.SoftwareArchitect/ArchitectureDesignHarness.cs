@@ -52,7 +52,7 @@ internal sealed class ArchitectureDesignHarness(
             ? context.CreateChatClient(selection)
             : await llmClientFactory.CreateChatClientAsync(selection, cancellationToken);
 
-        var capture = new ArchitecturePlanCapture();
+        var capture = new ArchitecturePlanCapture(deliveryProfile);
         var options = CreateOptions(
             request,
             context,
@@ -214,11 +214,11 @@ product brief below.
 
 Use the read-only tools to ground the design in current authoritative context. Do not invoke a
 mutation or invent business facts, capacity, dates, approvals, or existing system behavior.
-When no desired start is supplied, choose the next practical planning boundary and fix the dates
-in the returned draft. Use sequential {effectiveSprintLength}-day sprints. The authoritative
-schedule basis is: {deliveryProfile.ScheduleBasis}
+        The authoritative schedule basis is: {deliveryProfile.ScheduleBasis}
 
-{(deliveryProfile.UsesHumanEstimates
+        {(deliveryProfile.HumanDeliveryMemberCount + deliveryProfile.AgentDeliveryMemberCount == 0
+            ? "No delivery workers are authoritative yet. Return dependency-ordered planned sprint groupings, but set every sprint startsAt/endsAt and every ticket estimatePoints to null. Do not invent repository details or assignments."
+            : deliveryProfile.UsesHumanEstimates
     ? "This delivery team includes humans. Give every ticket a positive story-point estimate and use the stated human-inclusive cadence."
     : "This delivery team is agent-only. Set estimatePoints to null on every ticket. Forecast from dependency depth and safe parallelism; do not translate human story points, working days, or historical human velocity onto agents.")}
 
@@ -239,7 +239,7 @@ Call submit_architecture_plan exactly once with the complete typed plan. Do not 
     }
 }
 
-internal sealed class ArchitecturePlanCapture
+internal sealed class ArchitecturePlanCapture(ArchitectureDeliveryProfile? deliveryProfile = null)
 {
     public ArchitecturePlan? Plan { get; private set; }
 
@@ -247,7 +247,7 @@ internal sealed class ArchitecturePlanCapture
     {
         if (Plan is not null)
             return new ArchitecturePlanSubmission(false, "A plan was already submitted.");
-        var error = ArchitecturePlanPolicy.ValidatePlan(plan, forPublication: false);
+        var error = ArchitecturePlanPolicy.ValidatePlan(plan, forPublication: false, deliveryProfile);
         if (error is not null)
             return new ArchitecturePlanSubmission(false, error);
         Plan = plan;
