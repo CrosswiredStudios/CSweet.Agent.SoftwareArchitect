@@ -4,7 +4,7 @@
   "kind": "agent",
   "id": "com.csweet.software-architect",
   "name": "C-Sweet Software Architect",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "publisher": {
     "id": "com.csweet",
     "name": "C-Sweet"
@@ -167,7 +167,7 @@
     },
     {
       "name": "software-architecture.design.v2",
-      "description": "Create a typed, read-only outcome hierarchy and rolling two-sprint implementation plan.",
+      "description": "Create a typed, read-only outcome hierarchy with planned sprint groupings and complete Task decomposition.",
       "inputSchema": {
         "type": "object",
         "additionalProperties": false,
@@ -415,7 +415,7 @@
     },
     {
       "name": "software-architecture.publish-plan.v2",
-      "description": "Publish approved outcome Epics, sprint-grouped Stories, and rolling-horizon Tasks.",
+      "description": "Publish approved outcome Epics, sprint-grouped Stories, and junior-ready Tasks for every Story.",
       "inputSchema": {
         "type": "object",
         "additionalProperties": false,

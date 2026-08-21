@@ -61,7 +61,7 @@ public sealed class SoftwareArchitectAgentTests
     }
 
     [Fact]
-    public async Task DesignV2_DefersLaterTasksUntilRollingRefinement()
+    public async Task DesignV2_RequiresTasksForStoriesInEverySprint()
     {
         var plan = ArchitecturePlanSamples.MinimalHierarchicalPlan();
         var story = plan.Sprints[0].Tickets[0] with
@@ -82,10 +82,14 @@ public sealed class SoftwareArchitectAgentTests
             RequirementTraceability =
             [
                 new ArchitectureRequirementTrace(
-                    "Deliver the approved product behavior.",
+                    "Keep product behavior cohesive and maintainable.",
                     ["Application"],
                     plan.Sprints.SelectMany(x => x.Tickets).Select(x => x.Key)
-                        .Concat([story.Key, task.Key]).ToArray())
+                        .Concat([story.Key, task.Key]).ToArray()),
+                new ArchitectureRequirementTrace(
+                    "The workflow passes end to end.",
+                    ["Application"],
+                    [plan.Sprints[0].Tickets[0].Key, story.Key])
             ],
             Sprints = plan.Sprints.Concat(
             [
@@ -107,9 +111,76 @@ public sealed class SoftwareArchitectAgentTests
             SoftwareArchitectProfile.DesignCapabilityV2,
             ValidDesignRequest() with { RollingRefinement = true });
 
-        Assert.False(initial.Succeeded);
-        Assert.Contains("Later planned sprints", initial.Error, StringComparison.OrdinalIgnoreCase);
+        Assert.True(initial.Succeeded);
         Assert.True(refinement.Succeeded);
+    }
+
+    [Fact]
+    public async Task DesignV2_AcceptsPlansLargerThanOnePublicationBatch()
+    {
+        var plan = ArchitecturePlanSamples.MinimalHierarchicalPlan();
+        var firstSprint = plan.Sprints[0];
+        var story = firstSprint.Tickets.Single(x => x.Kind == WorkItemKinds.Story);
+        var template = firstSprint.Tickets.Single(x => x.Kind == WorkItemKinds.Task);
+        var tasks = Enumerable.Range(1, 41)
+            .Select(index => template with
+            {
+                Key = $"SA-1-T{index}",
+                Title = $"Implement vertical slice part {index}",
+                ParentStoryKey = story.Key,
+                Dependencies = index == 1 ? [] : [$"SA-1-T{index - 1}"]
+            })
+            .ToArray();
+        var allKeys = new[] { story.Key }
+            .Concat(tasks.Select(x => x.Key))
+            .Concat(plan.Sprints[1].Tickets.Select(x => x.Key))
+            .ToArray();
+        plan = plan with
+        {
+            RequirementTraceability =
+            [
+                new ArchitectureRequirementTrace(
+                    "Keep product behavior cohesive and maintainable.",
+                    ["Application"],
+                    allKeys),
+                new ArchitectureRequirementTrace(
+                    "The workflow passes end to end.",
+                    ["Application"],
+                    allKeys)
+            ],
+            Sprints =
+            [
+                firstSprint with { Tickets = [story, .. tasks] },
+                plan.Sprints[1]
+            ]
+        };
+
+        var result = await DesignRuntime().ExecuteCapabilityAsync(
+            new SoftwareArchitectAgent(new StubDesignGenerator(plan)),
+            SoftwareArchitectProfile.DesignCapabilityV2,
+            ValidDesignRequest());
+
+        Assert.True(result.Succeeded);
+    }
+
+    [Fact]
+    public async Task DesignV2_RejectsAnApprovedCriterionWithoutStoryTraceability()
+    {
+        var plan = ArchitecturePlanSamples.MinimalHierarchicalPlan() with
+        {
+            RequirementTraceability =
+            [
+                ArchitecturePlanSamples.MinimalHierarchicalPlan().RequirementTraceability[0]
+            ]
+        };
+
+        var result = await DesignRuntime().ExecuteCapabilityAsync(
+            new SoftwareArchitectAgent(new StubDesignGenerator(plan)),
+            SoftwareArchitectProfile.DesignCapabilityV2,
+            ValidDesignRequest());
+
+        Assert.False(result.Succeeded);
+        Assert.Contains("exact requirement-trace", result.Error, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

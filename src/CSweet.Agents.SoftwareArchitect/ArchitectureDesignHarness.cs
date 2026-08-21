@@ -227,8 +227,8 @@ mutation or invent business facts, capacity, dates, approvals, or existing syste
 
 {(request.OutcomeHierarchyRequired
     ? request.RollingRefinement
-        ? "Reconcile the existing outcome Epics and sprint-grouped Stories without changing their stable keys. Preserve active and completed scope, and add child Tasks only as needed to leave two not-yet-started Planned sprints detailed. Set epicKey on every Story and parentStoryKey on every Task; a Task and parent Story must share a sprint."
-        : "Organize the complete known scope into outcome Epics and sprint-grouped Stories. Fully decompose the first two sprints into child Tasks. Later sprints must contain Stories only for rolling refinement. Set epicKey on every Story and parentStoryKey on every Task; a Task and parent Story must share a sprint."
+        ? "Reconcile the existing outcome Epics and sprint-grouped Stories without changing their stable keys. Preserve active and completed scope, and fully decompose every new or incomplete Story into child Tasks. Set epicKey on every Story and parentStoryKey on every Task; a Task and parent Story must share a sprint."
+        : "Organize the complete known scope into outcome Epics and sprint-grouped Stories. Fully decompose every Story into child Tasks before publication. Set epicKey on every Story and parentStoryKey on every Task; a Task and parent Story must share a sprint."
     : "Organize the work into sprint-grouped Stories and Tasks using the v1 flat planning contract.")}
 
 Each sprint must deliver a coherent, demonstrable vertical increment. Each Story or Task must be
@@ -238,6 +238,8 @@ and migration/rollback behavior. Write for a junior developer: no ticket may lea
 decision to its implementer. Follow the estimate policy above and include concrete positive, negative, failure,
 integration, and observability verification where each is relevant. If a ticket has no interface,
 data, migration, or rollback change, say so explicitly instead of leaving the field empty.
+Copy every approved requirement and acceptance criterion verbatim into its own requirementTraceability
+entry, and map each entry to at least one outcome Story plus any supporting Tasks.
 
 Call submit_architecture_plan exactly once with the complete typed plan. Do not merely print JSON.
 

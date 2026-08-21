@@ -142,14 +142,50 @@ Confirmed actions: the Product Manager owns the requirements, acceptance criteri
 """));
         }
 
-        return Task.FromResult(AgentCoordinationTurnResult.Continue($"""
-I’m ready to decompose **{request.Subject}**. I’ll organize the approved outcome into outcome Epics,
-sprint-grouped Stories, and dependency-ordered Tasks for the next two planned sprints. Later sprint
-groups will retain Stories for rolling refinement. I’ll keep every ticket in Backlog and leave dates,
-estimates, repository details, and assignments unset until they are authoritative.
+        var prompt = latest?.Content ?? request.Objective;
+        if (prompt.Contains("Task decomposition", StringComparison.OrdinalIgnoreCase))
+        {
+            return Task.FromResult(AgentCoordinationTurnResult.Continue($"""
+Task decomposition complete:
 
-Product Manager: approve publication when the product brief is complete, or answer the single focused
-product question returned by the design capability.
+- Every proposed Story will have dependency-ordered child Tasks in the same planned sprint.
+- Each Task will carry purpose, affected boundary, requirements, technical constraints, failure behavior, tests, verification evidence, and definition of done.
+- All provisional tickets remain unassigned, undated, unestimated Backlog work until authoritative delivery details exist.
+
+Product Manager: review the complete technical decomposition and authorize governed publication when the product scope is approved.
+"""));
+        }
+        if (!prompt.Contains("outcome Epics", StringComparison.OrdinalIgnoreCase) &&
+            prompt.Contains("Stories", StringComparison.OrdinalIgnoreCase) &&
+            prompt.Contains("sprint", StringComparison.OrdinalIgnoreCase))
+        {
+            var proposedStories = request.SuccessCriteria.Count == 0
+                ? "- **STORY-01 — Deliver the approved outcome** (Sprint 1): " + request.Objective
+                : string.Join(Environment.NewLine, request.SuccessCriteria.Select((criterion, index) =>
+                    $"- **STORY-{index + 1:00} — Outcome slice {index + 1}** (Sprint {index + 1}): {criterion}"));
+            return Task.FromResult(AgentCoordinationTurnResult.Continue($"""
+Story and sprint proposal:
+
+{proposedStories}
+
+The first Planned sprint establishes the smallest end-to-end outcome. Later Planned sprints follow
+the approved success-criterion order unless a technical dependency requires an earlier enabling slice.
+Story containment remains under the approved outcome Epics; cross-Story prerequisites remain explicit dependencies.
+
+Product Manager: confirm Story priority, acceptance boundaries, non-goals, and sprint goals before I decompose every Story.
+"""));
+        }
+
+        var confidenceCriteria = request.SuccessCriteria.Count == 0
+            ? "the coordination session's approved success criteria"
+            : string.Join("; ", request.SuccessCriteria);
+        return Task.FromResult(AgentCoordinationTurnResult.Continue($"""
+Epic proposal:
+
+- **Core Product Outcome** — deliver the approved user-visible outcome: {request.Objective}
+- **Delivery Confidence** — prove: {confidenceCriteria}
+
+These Epics separate customer value from the cross-cutting confidence required to release it safely. Product Manager: confirm or adjust these outcome boundaries, then request the Story and sprint proposal.
 """));
     }
 
@@ -224,6 +260,9 @@ product question returned by the design capability.
                 plan, forPublication: false, deliveryProfile,
                 requireOutcomeHierarchy: hierarchical,
                 rollingRefinement: input.RollingRefinement);
+            if (hierarchical)
+                error ??= ArchitecturePlanPolicy.ValidateApprovedRequirementCoverage(
+                    input, plan, requireOutcomeHierarchy: true);
             if (error is not null)
                 return AgentWorkResult.Failure(error);
             var response = ArchitecturePlanPolicy.FinalizeDraft(
@@ -386,6 +425,14 @@ product question returned by the design capability.
             .ToDictionary(x => x.Ticket.Key, StringComparer.OrdinalIgnoreCase);
         var itemIds = new Dictionary<string, Guid>(StringComparer.OrdinalIgnoreCase);
         var earliestSprintOrdinal = plan.Sprints.Min(x => x.Ordinal);
+        const int maximumMutationsPerBatch = 40;
+        var mutationsPerTicket = 2 +
+            (deliveryReady ? 1 : 0) +
+            (deliveryReady && plan.Sprints.SelectMany(x => x.Tickets)
+                .Any(x => x.EstimatePoints.HasValue) ? 1 : 0) +
+            (deliveryReady ? 1 : 0);
+        var maximumTicketsPerBatch = Math.Max(1, maximumMutationsPerBatch / mutationsPerTicket);
+        var batchOrdinal = 0;
         while (itemIds.Count < ticketPlans.Count)
         {
             var ready = ticketPlans.Values
@@ -395,9 +442,11 @@ product question returned by the design capability.
                              itemIds.ContainsKey(x.Ticket.ParentStoryKey)))
                 .OrderBy(x => x.Sprint.Ordinal)
                 .ThenBy(x => x.Ticket.Key, StringComparer.OrdinalIgnoreCase)
+                .Take(maximumTicketsPerBatch)
                 .ToArray();
             if (ready.Length == 0)
                 throw new InvalidOperationException("Approved ticket dependencies are cyclic.");
+            batchOrdinal++;
             foreach (var entry in ready)
             {
                 var ticketPlan = entry.Ticket;
@@ -518,6 +567,18 @@ product question returned by the design capability.
                         sprintIds[entry.Sprint.Ordinal],
                         ticketPlan.Kind));
             }
+            await context.ReportProgressAsync(
+                new
+                {
+                    stage = "publishing-batch",
+                    design.PlanId,
+                    batchOrdinal,
+                    batchSize = ready.Length,
+                    maximumMutationsPerBatch,
+                    publishedTicketCount = itemIds.Count,
+                    totalTicketCount = ticketPlans.Count
+                },
+                cancellationToken);
         }
 
         var response = new ArchitecturePublishResponse(
@@ -768,6 +829,8 @@ work-board mutations from conversation.
             conversationId, cancellationToken);
         var sourceMessage = transcript.Messages.SingleOrDefault(x => x.Id == received.MessageId);
         if (sourceMessage?.SenderOrganizationUserId is not { } senderId)
+            return;
+        if (sourceMessage.CoordinationSessionId.HasValue)
             return;
         var organization = await context.Platform.ReadOrganizationSnapshotAsync(cancellationToken);
         if (!IsAuthorizedPlanningParticipant(senderId, organization, context.Identity))

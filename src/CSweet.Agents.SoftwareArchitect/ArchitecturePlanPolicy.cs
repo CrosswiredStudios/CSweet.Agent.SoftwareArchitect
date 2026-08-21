@@ -10,7 +10,6 @@ internal static class ArchitecturePlanPolicy
 {
     private const int MaximumListItems = 100;
     private const int MaximumTextLength = 8_000;
-    private const int MaximumTickets = 40;
     private static readonly string[] RequiredQualityAttributes =
         ["Security", "Reliability", "Performance", "Observability", "Maintainability", "Testability"];
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
@@ -80,9 +79,6 @@ internal static class ArchitecturePlanPolicy
             return "At least one incremental sprint is required.";
         if (plan.Sprints.Any(x => x.Tickets is null))
             return "Every sprint requires a tickets collection.";
-        if (plan.Sprints.SelectMany(x => x.Tickets).Count() > MaximumTickets)
-            return $"A plan may contain at most {MaximumTickets} tickets.";
-
         Dictionary<string, ArchitectureEpicPlan>? outcomeEpics = null;
         if (requireOutcomeHierarchy)
         {
@@ -241,12 +237,14 @@ internal static class ArchitecturePlanPolicy
                     return $"Task '{entry.Ticket.Key}' cannot reference a different outcome Epic than its parent Story.";
             }
 
-            foreach (var sprint in plan.Sprints.OrderBy(x => x.Ordinal).Take(2))
-                if (!sprint.Tickets.Any(ticket => ticket.Kind == WorkItemKinds.Task))
-                    return $"Detailed sprint {sprint.Ordinal} requires at least one child Task.";
-            if (!rollingRefinement && plan.Sprints.OrderBy(x => x.Ordinal).Skip(2)
-                    .Any(sprint => sprint.Tickets.Any(ticket => ticket.Kind == WorkItemKinds.Task)))
-                return "Later planned sprints must retain Stories without Tasks until rolling refinement.";
+            foreach (var story in stories.Values)
+                if (!ticketEntries.Any(entry =>
+                        entry.Ticket.Kind == WorkItemKinds.Task &&
+                        string.Equals(
+                            entry.Ticket.ParentStoryKey,
+                            story.Ticket.Key,
+                            StringComparison.OrdinalIgnoreCase)))
+                    return $"Story '{story.Ticket.Key}' requires at least one child Task.";
         }
         var datedSprints = plan.Sprints.OrderBy(x => x.Ordinal).ToList();
         for (var index = 1; index < datedSprints.Count; index++)
@@ -301,6 +299,27 @@ internal static class ArchitecturePlanPolicy
                 return $"Requirement trace '{trace.Requirement}' references an unknown ticket.";
         }
 
+        return null;
+    }
+
+    internal static string? ValidateApprovedRequirementCoverage(
+        ArchitectureDesignRequest request,
+        ArchitecturePlan plan,
+        bool requireOutcomeHierarchy)
+    {
+        var ticketKinds = plan.Sprints
+            .SelectMany(sprint => sprint.Tickets)
+            .ToDictionary(ticket => ticket.Key, ticket => ticket.Kind, StringComparer.OrdinalIgnoreCase);
+        foreach (var approved in (request.Requirements ?? []).Concat(request.AcceptanceCriteria ?? []))
+        {
+            var trace = plan.RequirementTraceability.FirstOrDefault(candidate =>
+                NormalizeTraceText(candidate.Requirement) == NormalizeTraceText(approved));
+            if (trace is null)
+                return $"Approved requirement '{approved}' must have an exact requirement-trace entry.";
+            if (requireOutcomeHierarchy && !trace.TicketKeys.Any(key =>
+                    ticketKinds.TryGetValue(key, out var kind) && kind == WorkItemKinds.Story))
+                return $"Approved requirement '{approved}' must map to at least one Story.";
+        }
         return null;
     }
 
@@ -583,7 +602,7 @@ internal static class ArchitecturePlanPolicy
 
 ## Planning policy
 - Stories under this Epic express customer or product value.
-- Detailed Tasks are created only inside the rolling two-sprint planning horizon.
+- Every Story is fully decomposed into junior-ready Tasks before publication.
 - Starting delivery remains an explicit Product Manager action after preflight.
 """;
 
@@ -614,5 +633,8 @@ internal static class ArchitecturePlanPolicy
         values.Count == 0 ? "- None." : string.Join(Environment.NewLine, values.Select(x => $"- {x}"));
 
     private static string NormalizeRole(string value) =>
+        new(value.Trim().ToLowerInvariant().Where(char.IsLetterOrDigit).ToArray());
+
+    private static string NormalizeTraceText(string value) =>
         new(value.Trim().ToLowerInvariant().Where(char.IsLetterOrDigit).ToArray());
 }

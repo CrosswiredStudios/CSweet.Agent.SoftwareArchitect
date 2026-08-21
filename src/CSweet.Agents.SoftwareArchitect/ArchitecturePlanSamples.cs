@@ -50,9 +50,13 @@ internal static class ArchitecturePlanSamples
             RequirementTraceability =
             [
                 new ArchitectureRequirementTrace(
-                    "Deliver the approved product behavior.",
+                    "Keep product behavior cohesive and maintainable.",
                     ["Application"],
-                    [storyOne.Key, taskOne.Key, storyTwo.Key, taskTwo.Key])
+                    [storyOne.Key, taskOne.Key, storyTwo.Key, taskTwo.Key]),
+                new ArchitectureRequirementTrace(
+                    "The workflow passes end to end.",
+                    ["Application"],
+                    [storyOne.Key, taskOne.Key])
             ],
             Sprints =
             [

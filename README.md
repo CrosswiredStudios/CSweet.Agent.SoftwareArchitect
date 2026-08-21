@@ -1,7 +1,7 @@
 # C-Sweet Software Architect
 
-First-party C-Sweet Software Architect agent, version `0.8.0`, built on .NET 10,
-`CSweet.Agent.SDK` 3.11.0, Microsoft Agent Framework Harness 1.15.0, and manifest protocol v2.
+First-party C-Sweet Software Architect agent, version `0.8.1`, built on .NET 10,
+`CSweet.Agent.SDK` 3.11.1, Microsoft Agent Framework Harness 1.15.0, and manifest protocol v2.
 
 The agent converts approved product requirements into maintainable system designs, incremental
 sprint plans, and developer-ready tickets. Product and Project Managers retain ownership of
@@ -34,9 +34,9 @@ member by estimated points, breaking ties by installation ID. Stable keys make p
 under at-least-once delivery and partial retries.
 
 The v1 design and publication capabilities remain available for compatibility. New planning uses
-the v2 hierarchy: the complete known scope is represented by sprint-grouped Stories, the first two
-not-yet-started sprints are detailed with Tasks, and later Stories are refined when the PM starts a
-sprint.
+the v2 hierarchy: the complete known scope is represented by sprint-grouped Stories and every Story
+is fully decomposed into junior-ready Tasks before publication. Large plans are published through
+dependency-ordered, idempotent batches of at most 40 ticket mutations.
 
 The agent never starts or completes sprints, selects staff or repositories, manually reassigns
 work, writes code, merges, deploys, or publishes releases. Approved publication only binds each
