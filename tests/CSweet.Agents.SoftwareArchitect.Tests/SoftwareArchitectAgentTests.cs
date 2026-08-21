@@ -819,8 +819,7 @@ Approved product goal: Ship the first release.
                 kickoff, null, turnId, 0, messageId));
 
         Assert.Null(started);
-        Assert.Contains("Ready", runtime.Progress[0].GetProperty("delta").GetString(), StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("Product Manager", runtime.Progress[0].GetProperty("delta").GetString(), StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("Acknowledged.", runtime.Progress[0].GetProperty("delta").GetString());
     }
 
     [Fact]

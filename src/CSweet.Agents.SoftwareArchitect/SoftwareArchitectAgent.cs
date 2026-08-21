@@ -737,9 +737,8 @@ work-board mutations from conversation.
 
         if (IsProductManagerKickoff(received.Message, senderId, organization))
         {
-            await PublishConversationResponseAsync(received,
-                "Ready. I’ll provide the technical decomposition, dependencies, risks, and implementation sequence through the Product Manager’s planning session.",
-                context, cancellationToken);
+            await PublishConversationResponseAsync(
+                received, "Acknowledged.", context, cancellationToken);
             return;
         }
 

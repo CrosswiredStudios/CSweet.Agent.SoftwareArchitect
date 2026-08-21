@@ -4,7 +4,7 @@
   "kind": "agent",
   "id": "com.csweet.software-architect",
   "name": "C-Sweet Software Architect",
-  "version": "0.7.1",
+  "version": "0.7.2",
   "publisher": {
     "id": "com.csweet",
     "name": "C-Sweet"
@@ -14,6 +14,7 @@
     "projectPath": "src/CSweet.Agents.SoftwareArchitect/CSweet.Agents.SoftwareArchitect.csproj",
     "targetFramework": "net10.0",
     "defaultActivationMode": "AlwaysOn",
+    "defaultTickFrequencySeconds": 300,
     "supportsMultipleInstallations": true,
     "maximumConcurrentJobs": 1,
     "workspaceAccess": "None"

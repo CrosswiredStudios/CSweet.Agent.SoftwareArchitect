@@ -5,7 +5,7 @@ namespace CSweet.Agents.SoftwareArchitect;
 public static class SoftwareArchitectProfile
 {
     public const string AgentId = "com.csweet.software-architect";
-    public const string Version = "0.7.1";
+    public const string Version = "0.7.2";
     public const string DisplayName = "C-Sweet Software Architect";
     public const string DesignCapability = "software-architecture.design.v1";
     public const string PublishCapability = "software-architecture.publish-plan.v1";
