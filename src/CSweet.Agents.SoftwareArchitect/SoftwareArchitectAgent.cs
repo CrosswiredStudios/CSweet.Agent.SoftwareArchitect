@@ -143,13 +143,13 @@ Confirmed actions: the Product Manager owns the requirements, acceptance criteri
         }
 
         return Task.FromResult(AgentCoordinationTurnResult.Continue($"""
-Technical direction for **{request.Subject}**:
+I’m ready to decompose **{request.Subject}**. I’ll organize the approved outcome into outcome Epics,
+sprint-grouped Stories, and dependency-ordered Tasks for the next two planned sprints. Later sprint
+groups will retain Stories for rolling refinement. I’ll keep every ticket in Backlog and leave dates,
+estimates, repository details, and assignments unset until they are authoritative.
 
-- Preserve the existing approval, repository-selection, and publication gates. Model the work as idempotent, independently testable increments with explicit dependency order and rollback behavior.
-- Tickets must include concrete requirements, acceptance criteria, affected boundary or contract, quality and failure expectations, dependencies, and verification evidence. Do not assign implementation until the repository and base branch are approved.
-- Treat the latest product guidance as authoritative: {latest?.Content ?? "No additional product guidance was provided."}
-
-Product Manager: please reconcile these constraints with the product outcome and kanban board, then either mark the plan decision-ready or identify the single missing product decision or permission.
+Product Manager: approve publication when the product brief is complete, or answer the single focused
+product question returned by the design capability.
 """));
     }
 
@@ -162,9 +162,13 @@ Product Manager: please reconcile these constraints with the product outcome and
         return request.Capability switch
         {
             SoftwareArchitectProfile.DesignCapability =>
-                await ExecuteDesignAsync(request, context, cancellationToken),
+                await ExecuteDesignAsync(request, context, hierarchical: false, cancellationToken),
+            SoftwareArchitectProfile.DesignCapabilityV2 =>
+                await ExecuteDesignAsync(request, context, hierarchical: true, cancellationToken),
             SoftwareArchitectProfile.PublishCapability =>
-                await ExecutePublicationAsync(request, context, cancellationToken),
+                await ExecutePublicationAsync(request, context, hierarchical: false, cancellationToken),
+            SoftwareArchitectProfile.PublishCapabilityV2 =>
+                await ExecutePublicationAsync(request, context, hierarchical: true, cancellationToken),
             SoftwareArchitectProfile.ConverseCapability or
             SoftwareArchitectProfile.SummarizeCapability or
             SoftwareArchitectProfile.PlanWorkCapability =>
@@ -177,6 +181,7 @@ Product Manager: please reconcile these constraints with the product outcome and
     private async Task<AgentWorkResult> ExecuteDesignAsync(
         AgentCapabilityRequest request,
         AgentRuntimeContext context,
+        bool hierarchical,
         CancellationToken cancellationToken)
     {
         ArchitectureDesignRequest? input;
@@ -206,12 +211,19 @@ Product Manager: please reconcile these constraints with the product outcome and
                     "defaultSprintLengthDays",
                     SoftwareArchitectProfile.DefaultSprintLengthDays));
             var plan = await _designGenerator.GenerateAsync(
-                input with { SprintLengthDays = deliveryProfile.SprintLengthDays },
+                input with
+                {
+                    SprintLengthDays = deliveryProfile.SprintLengthDays,
+                    OutcomeHierarchyRequired = hierarchical
+                },
                 deliveryProfile,
                 context,
                 Settings,
                 cancellationToken);
-            error = ArchitecturePlanPolicy.ValidatePlan(plan, forPublication: false, deliveryProfile);
+            error = ArchitecturePlanPolicy.ValidatePlan(
+                plan, forPublication: false, deliveryProfile,
+                requireOutcomeHierarchy: hierarchical,
+                rollingRefinement: input.RollingRefinement);
             if (error is not null)
                 return AgentWorkResult.Failure(error);
             var response = ArchitecturePlanPolicy.FinalizeDraft(
@@ -239,6 +251,7 @@ Product Manager: please reconcile these constraints with the product outcome and
     private static async Task<AgentWorkResult> ExecutePublicationAsync(
         AgentCapabilityRequest request,
         AgentRuntimeContext context,
+        bool hierarchical,
         CancellationToken cancellationToken)
     {
         ArchitecturePublishRequest? input;
@@ -251,7 +264,7 @@ Product Manager: please reconcile these constraints with the product outcome and
             return AgentWorkResult.Failure("The architecture publication request is not valid.");
         }
 
-        var error = ArchitecturePlanPolicy.ValidatePublication(input);
+        var error = ArchitecturePlanPolicy.ValidatePublication(input, requireOutcomeHierarchy: hierarchical);
         if (error is not null)
             return AgentWorkResult.Failure(error);
 
@@ -283,19 +296,49 @@ Product Manager: please reconcile these constraints with the product outcome and
             new { stage = "publishing", message = "Publishing the approved architecture plan.", design.PlanId },
             cancellationToken);
 
-        var domainKey = $"software-architecture:{design.PlanId:N}";
-        var epic = await context.Platform.Work.CreateItemAsync(
-            new CreateWorkItemRequest(
-                input.BoardId,
-                Limit($"Architecture: {design.ProductGoal}", 200),
-                ArchitecturePlanPolicy.BuildEpicDescription(design),
-                WorkItemKinds.Epic,
-                WorkPriorities.High,
-                null,
-                null,
-                null,
-                $"{domainKey}:epic"),
-            cancellationToken);
+        var domainKey = hierarchical
+            ? $"software-architecture:board:{input.BoardId:N}"
+            : $"software-architecture:{design.PlanId:N}";
+        var epicIds = new Dictionary<string, Guid>(StringComparer.OrdinalIgnoreCase);
+        var publishedEpics = new List<PublishedEpic>();
+        if (hierarchical)
+        {
+            foreach (var epicPlan in plan.OutcomeEpics.OrderBy(x => x.Key, StringComparer.OrdinalIgnoreCase))
+            {
+                var epicKey = NormalizeKey(epicPlan.Key);
+                var epicItem = await context.Platform.Work.CreateItemAsync(
+                    new CreateWorkItemRequest(
+                        input.BoardId,
+                        Limit(epicPlan.Title, 200),
+                        ArchitecturePlanPolicy.BuildOutcomeEpicDescription(epicPlan),
+                        WorkItemKinds.Epic,
+                        WorkPriorities.High,
+                        null,
+                        null,
+                        null,
+                        $"{domainKey}:epic:{epicKey}"),
+                    cancellationToken);
+                epicIds.Add(epicPlan.Key, epicItem.Id);
+                publishedEpics.Add(new PublishedEpic(epicPlan.Key, epicItem.Id, epicItem.Title));
+            }
+        }
+        else
+        {
+            var epicItem = await context.Platform.Work.CreateItemAsync(
+                new CreateWorkItemRequest(
+                    input.BoardId,
+                    Limit($"Architecture: {design.ProductGoal}", 200),
+                    ArchitecturePlanPolicy.BuildEpicDescription(design),
+                    WorkItemKinds.Epic,
+                    WorkPriorities.High,
+                    null,
+                    null,
+                    null,
+                    $"{domainKey}:epic"),
+                cancellationToken);
+            epicIds.Add("legacy", epicItem.Id);
+            publishedEpics.Add(new PublishedEpic("legacy", epicItem.Id, epicItem.Title));
+        }
 
         var publishedSprints = new List<PublishedSprint>();
         var publishedTickets = new List<PublishedTicket>();
@@ -307,8 +350,7 @@ Product Manager: please reconcile these constraints with the product outcome and
         var qualityLoad = qualityPool.ToDictionary(ArchitecturePlanPolicy.AssignmentKey, _ => 0m);
         var sprintIds = new Dictionary<int, Guid>();
         var fallbackStart = NextPlanningBoundary(design.PreparedAt, design.DeliveryProfile.UsesHumanEstimates);
-        var provisional = design.DeliveryProfile.HumanDeliveryMemberCount == 0 &&
-                          design.DeliveryProfile.AgentDeliveryMemberCount == 0;
+        var provisional = !deliveryReady;
         foreach (var sprintPlan in plan.Sprints.OrderBy(x => x.Ordinal))
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -348,7 +390,9 @@ Product Manager: please reconcile these constraints with the product outcome and
         {
             var ready = ticketPlans.Values
                 .Where(x => !itemIds.ContainsKey(x.Ticket.Key) &&
-                            x.Ticket.Dependencies.All(itemIds.ContainsKey))
+                            x.Ticket.Dependencies.All(itemIds.ContainsKey) &&
+                            (string.IsNullOrWhiteSpace(x.Ticket.ParentStoryKey) ||
+                             itemIds.ContainsKey(x.Ticket.ParentStoryKey)))
                 .OrderBy(x => x.Sprint.Ordinal)
                 .ThenBy(x => x.Ticket.Key, StringComparer.OrdinalIgnoreCase)
                 .ToArray();
@@ -369,6 +413,11 @@ Product Manager: please reconcile these constraints with the product outcome and
                         .Select(key => itemIds[key])
                         .ToArray()
                 };
+                var parentItemId = hierarchical
+                    ? ticketPlan.Kind == WorkItemKinds.Story
+                        ? epicIds[ticketPlan.EpicKey!]
+                        : itemIds[ticketPlan.ParentStoryKey!]
+                    : epicIds["legacy"];
                 var item = await context.Platform.Work.CreateItemAsync(
                     new CreateWorkItemRequest(
                         input.BoardId,
@@ -377,8 +426,8 @@ Product Manager: please reconcile these constraints with the product outcome and
                         ticketPlan.Kind,
                         ticketPlan.Priority,
                         null,
-                        epic.Id,
-                        entry.Sprint.EndsAt,
+                        parentItemId,
+                        deliveryReady ? entry.Sprint.EndsAt : null,
                         $"{domainKey}:ticket:{ticketKey}")
                     {
                         Planning = planning
@@ -434,7 +483,7 @@ Product Manager: please reconcile these constraints with the product outcome and
                     if (qualityAssignment is not null)
                         EnsureStableAssignment(item, "quality", qualityAssignment);
                 }
-                if (ticketPlan.EstimatePoints is not null)
+                if (deliveryReady && ticketPlan.EstimatePoints is not null)
                     item = await context.Platform.Work.EstimateAsync(
                         new EstimateWorkItemRequest(
                             input.BoardId,
@@ -473,12 +522,13 @@ Product Manager: please reconcile these constraints with the product outcome and
 
         var response = new ArchitecturePublishResponse(
             design.PlanId,
-            epic.Id,
+            publishedEpics[0].ItemId,
             publishedSprints,
             publishedTickets,
             DateTimeOffset.UtcNow)
         {
-            DeliveryFinalized = deliveryReady
+            DeliveryFinalized = deliveryReady,
+            Epics = publishedEpics
         };
         await context.ReportProgressAsync(
             new
@@ -728,38 +778,25 @@ work-board mutations from conversation.
             return;
         }
 
-        if (IsAcknowledgement(received.Message))
+        var sourceContent = sourceMessage.Content;
+        if (IsAcknowledgement(sourceContent))
         {
             await PublishConversationResponseAsync(
                 received, "Acknowledged.", context, cancellationToken);
             return;
         }
 
-        if (IsProductManagerKickoff(received.Message, senderId, organization))
+        if (IsProductManagerKickoff(sourceContent, senderId, organization))
         {
             await PublishConversationResponseAsync(
                 received, "Acknowledged.", context, cancellationToken);
             return;
         }
 
-        if (IsProductManagerCollaborationRequest(received.Message))
+        if (IsProductManagerCollaborationRequest(sourceContent))
         {
-            var productManager = FindActiveProductManager(organization);
-            if (productManager is null)
-            {
-                await PublishConversationResponseAsync(received,
-                    "I couldn't start collaboration because there is no active Product Manager agent in this organization.",
-                    context, cancellationToken);
-                return;
-            }
-
-            _ = await context.Platform.Communication.SendDirectAgentMessageAsync(
-                productManager.Id,
-                "I’m ready to continue the product and architecture planning session when you start it.",
-                $"software-architect:planning-ready:{message.EventId:N}",
-                cancellationToken);
             await PublishConversationResponseAsync(received,
-                $"I notified {productManager.DisplayName} that I’m ready. The Product Manager owns starting the planning session.",
+                "Understood. I’ll continue through our active planning session.",
                 context, cancellationToken);
             return;
         }
@@ -768,7 +805,7 @@ work-board mutations from conversation.
             new AssistantCapabilityInput(
                 received.ProviderProfileId,
                 received.ConversationId,
-                received.Message,
+                sourceContent,
                 received.Context,
                 received.UserId,
                 received.MessageId,

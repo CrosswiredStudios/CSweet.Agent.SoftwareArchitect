@@ -11,7 +11,11 @@ public sealed record ArchitectureDesignRequest(
     IReadOnlyList<string>? QualityAttributes = null,
     DateTimeOffset? DesiredStartAt = null,
     int? SprintLengthDays = null,
-    Guid? SourceConversationId = null);
+    Guid? SourceConversationId = null)
+{
+    public bool OutcomeHierarchyRequired { get; init; }
+    public bool RollingRefinement { get; init; }
+}
 
 public sealed record ArchitecturePlan(
     string Summary,
@@ -29,7 +33,16 @@ public sealed record ArchitecturePlan(
     IReadOnlyList<string> Assumptions,
     IReadOnlyList<string> BlockingQuestions,
     IReadOnlyList<ArchitectureRequirementTrace> RequirementTraceability,
-    IReadOnlyList<ArchitectureSprintPlan> Sprints);
+    IReadOnlyList<ArchitectureSprintPlan> Sprints)
+{
+    public IReadOnlyList<ArchitectureEpicPlan> OutcomeEpics { get; init; } = [];
+}
+
+public sealed record ArchitectureEpicPlan(
+    string Key,
+    string Title,
+    string Outcome,
+    IReadOnlyList<string> AcceptanceCriteria);
 
 public sealed record ArchitectureComponent(
     string Name,
@@ -86,7 +99,11 @@ public sealed record ArchitectureTicketPlan(
     IReadOnlyList<string> Tests,
     IReadOnlyList<string> Dependencies,
     string MigrationAndRollback,
-    decimal? EstimatePoints);
+    decimal? EstimatePoints)
+{
+    public string? EpicKey { get; init; }
+    public string? ParentStoryKey { get; init; }
+}
 
 public sealed record ArchitectureDesignResponse(
     Guid PlanId,
@@ -95,7 +112,10 @@ public sealed record ArchitectureDesignResponse(
     string ProductGoal,
     ArchitecturePlan Plan,
     DateTimeOffset PreparedAt,
-    ArchitectureDeliveryProfile DeliveryProfile);
+    ArchitectureDeliveryProfile DeliveryProfile)
+{
+    public bool RollingRefinement { get; init; }
+}
 
 public sealed record ArchitectureDeliveryProfile(
     string ScheduleBasis,
@@ -142,8 +162,10 @@ public sealed record ArchitecturePublishResponse(
     DateTimeOffset PublishedAt)
 {
     public bool DeliveryFinalized { get; init; }
+    public IReadOnlyList<PublishedEpic> Epics { get; init; } = [];
 }
 
+public sealed record PublishedEpic(string Key, Guid ItemId, string Title);
 public sealed record PublishedSprint(int Ordinal, Guid SprintId, string Name);
 public sealed record PublishedTicket(string Key, Guid ItemId, Guid SprintId, string Kind);
 

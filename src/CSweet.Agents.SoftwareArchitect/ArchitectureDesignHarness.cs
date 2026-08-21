@@ -52,7 +52,10 @@ internal sealed class ArchitectureDesignHarness(
             ? context.CreateChatClient(selection)
             : await llmClientFactory.CreateChatClientAsync(selection, cancellationToken);
 
-        var capture = new ArchitecturePlanCapture(deliveryProfile);
+        var capture = new ArchitecturePlanCapture(
+            deliveryProfile,
+            request.OutcomeHierarchyRequired,
+            request.RollingRefinement);
         var options = CreateOptions(
             request,
             context,
@@ -222,6 +225,12 @@ mutation or invent business facts, capacity, dates, approvals, or existing syste
     ? "This delivery team includes humans. Give every ticket a positive story-point estimate and use the stated human-inclusive cadence."
     : "This delivery team is agent-only. Set estimatePoints to null on every ticket. Forecast from dependency depth and safe parallelism; do not translate human story points, working days, or historical human velocity onto agents.")}
 
+{(request.OutcomeHierarchyRequired
+    ? request.RollingRefinement
+        ? "Reconcile the existing outcome Epics and sprint-grouped Stories without changing their stable keys. Preserve active and completed scope, and add child Tasks only as needed to leave two not-yet-started Planned sprints detailed. Set epicKey on every Story and parentStoryKey on every Task; a Task and parent Story must share a sprint."
+        : "Organize the complete known scope into outcome Epics and sprint-grouped Stories. Fully decompose the first two sprints into child Tasks. Later sprints must contain Stories only for rolling refinement. Set epicKey on every Story and parentStoryKey on every Task; a Task and parent Story must share a sprint."
+    : "Organize the work into sprint-grouped Stories and Tasks using the v1 flat planning contract.")}
+
 Each sprint must deliver a coherent, demonstrable vertical increment. Each Story or Task must be
 independently implementable and include requirements, acceptance criteria, tests, dependencies,
 explicit interface/data guidance, ordered implementation steps, SOLID guidance where relevant,
@@ -239,7 +248,10 @@ Call submit_architecture_plan exactly once with the complete typed plan. Do not 
     }
 }
 
-internal sealed class ArchitecturePlanCapture(ArchitectureDeliveryProfile? deliveryProfile = null)
+internal sealed class ArchitecturePlanCapture(
+    ArchitectureDeliveryProfile? deliveryProfile = null,
+    bool requireOutcomeHierarchy = false,
+    bool rollingRefinement = false)
 {
     public ArchitecturePlan? Plan { get; private set; }
 
@@ -247,7 +259,8 @@ internal sealed class ArchitecturePlanCapture(ArchitectureDeliveryProfile? deliv
     {
         if (Plan is not null)
             return new ArchitecturePlanSubmission(false, "A plan was already submitted.");
-        var error = ArchitecturePlanPolicy.ValidatePlan(plan, forPublication: false, deliveryProfile);
+        var error = ArchitecturePlanPolicy.ValidatePlan(
+            plan, forPublication: false, deliveryProfile, requireOutcomeHierarchy, rollingRefinement);
         if (error is not null)
             return new ArchitecturePlanSubmission(false, error);
         Plan = plan;

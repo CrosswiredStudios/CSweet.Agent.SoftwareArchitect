@@ -4,6 +4,70 @@ namespace CSweet.Agents.SoftwareArchitect;
 
 internal static class ArchitecturePlanSamples
 {
+    internal static ArchitecturePlan MinimalHierarchicalPlan()
+    {
+        var flat = MinimalValidPlan();
+        var template = flat.Sprints[0].Tickets[0];
+        var storyOne = template with { EpicKey = "EPIC-OUTCOME" };
+        var taskOne = template with
+        {
+            Key = "SA-1-T1",
+            Title = "Implement the first vertical slice",
+            Kind = WorkItemKinds.Task,
+            EpicKey = "EPIC-OUTCOME",
+            ParentStoryKey = storyOne.Key
+        };
+        var storyTwo = template with
+        {
+            Key = "SA-2",
+            Title = "Harden the customer workflow",
+            EpicKey = "EPIC-RELIABILITY"
+        };
+        var taskTwo = template with
+        {
+            Key = "SA-2-T1",
+            Title = "Implement workflow hardening",
+            Kind = WorkItemKinds.Task,
+            EpicKey = "EPIC-RELIABILITY",
+            ParentStoryKey = storyTwo.Key,
+            Dependencies = [taskOne.Key]
+        };
+        return flat with
+        {
+            OutcomeEpics =
+            [
+                new ArchitectureEpicPlan(
+                    "EPIC-OUTCOME",
+                    "Customer Workflow",
+                    "Customers complete the approved workflow reliably.",
+                    ["The approved workflow succeeds end to end."]),
+                new ArchitectureEpicPlan(
+                    "EPIC-RELIABILITY",
+                    "Workflow Reliability",
+                    "Customers can rely on the workflow under expected failures.",
+                    ["Expected failures preserve a recoverable customer experience."])
+            ],
+            RequirementTraceability =
+            [
+                new ArchitectureRequirementTrace(
+                    "Deliver the approved product behavior.",
+                    ["Application"],
+                    [storyOne.Key, taskOne.Key, storyTwo.Key, taskTwo.Key])
+            ],
+            Sprints =
+            [
+                flat.Sprints[0] with { Tickets = [storyOne, taskOne] },
+                flat.Sprints[0] with
+                {
+                    Ordinal = 2,
+                    Name = "Sprint 2 - Workflow hardening",
+                    Goal = "Harden the demonstrated workflow without changing its product contract.",
+                    Tickets = [storyTwo, taskTwo]
+                }
+            ]
+        };
+    }
+
     internal static ArchitecturePlan MinimalValidPlan() =>
         new(
             "Use one cohesive application boundary with explicit domain and infrastructure dependencies.",

@@ -44,7 +44,9 @@ internal static class ArchitecturePlanPolicy
     internal static string? ValidatePlan(
         ArchitecturePlan? plan,
         bool forPublication,
-        ArchitectureDeliveryProfile? deliveryProfile = null)
+        ArchitectureDeliveryProfile? deliveryProfile = null,
+        bool requireOutcomeHierarchy = false,
+        bool rollingRefinement = false)
     {
         if (plan is null)
             return "The architecture plan is required.";
@@ -80,6 +82,24 @@ internal static class ArchitecturePlanPolicy
             return "Every sprint requires a tickets collection.";
         if (plan.Sprints.SelectMany(x => x.Tickets).Count() > MaximumTickets)
             return $"A plan may contain at most {MaximumTickets} tickets.";
+
+        Dictionary<string, ArchitectureEpicPlan>? outcomeEpics = null;
+        if (requireOutcomeHierarchy)
+        {
+            if (plan.OutcomeEpics is null || plan.OutcomeEpics.Count == 0)
+                return "At least one outcome Epic is required.";
+            if (plan.OutcomeEpics.Any(epic =>
+                    string.IsNullOrWhiteSpace(epic.Key) ||
+                    string.IsNullOrWhiteSpace(epic.Title) ||
+                    string.IsNullOrWhiteSpace(epic.Outcome) ||
+                    epic.AcceptanceCriteria is null || epic.AcceptanceCriteria.Count == 0))
+                return "Every outcome Epic requires a key, title, outcome, and acceptance criteria.";
+            outcomeEpics = plan.OutcomeEpics
+                .GroupBy(epic => epic.Key, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
+            if (outcomeEpics.Count != plan.OutcomeEpics.Count)
+                return "Outcome Epic keys must be unique.";
+        }
 
         var isProvisional = deliveryProfile is not null &&
                             deliveryProfile.HumanDeliveryMemberCount == 0 &&
@@ -190,6 +210,44 @@ internal static class ArchitecturePlanPolicy
 
         if (!ordinals.SetEquals(Enumerable.Range(1, plan.Sprints.Count)))
             return "Sprint ordinals must be sequential beginning at 1.";
+
+        if (requireOutcomeHierarchy)
+        {
+            var ticketEntries = plan.Sprints
+                .SelectMany(sprint => sprint.Tickets.Select(ticket => (Sprint: sprint.Ordinal, Ticket: ticket)))
+                .ToList();
+            var stories = ticketEntries
+                .Where(entry => entry.Ticket.Kind == WorkItemKinds.Story)
+                .ToDictionary(entry => entry.Ticket.Key, StringComparer.OrdinalIgnoreCase);
+            foreach (var entry in ticketEntries)
+            {
+                if (entry.Ticket.Kind == WorkItemKinds.Story)
+                {
+                    if (string.IsNullOrWhiteSpace(entry.Ticket.EpicKey) ||
+                        outcomeEpics is null || !outcomeEpics.ContainsKey(entry.Ticket.EpicKey))
+                        return $"Story '{entry.Ticket.Key}' must reference an existing outcome Epic.";
+                    if (!string.IsNullOrWhiteSpace(entry.Ticket.ParentStoryKey))
+                        return $"Story '{entry.Ticket.Key}' cannot have a parent Story.";
+                    continue;
+                }
+
+                if (string.IsNullOrWhiteSpace(entry.Ticket.ParentStoryKey) ||
+                    !stories.TryGetValue(entry.Ticket.ParentStoryKey, out var parent))
+                    return $"Task '{entry.Ticket.Key}' must reference an existing parent Story.";
+                if (parent.Sprint != entry.Sprint)
+                    return $"Task '{entry.Ticket.Key}' must be grouped into the same sprint as its parent Story.";
+                if (!string.IsNullOrWhiteSpace(entry.Ticket.EpicKey) &&
+                    !string.Equals(entry.Ticket.EpicKey, parent.Ticket.EpicKey, StringComparison.OrdinalIgnoreCase))
+                    return $"Task '{entry.Ticket.Key}' cannot reference a different outcome Epic than its parent Story.";
+            }
+
+            foreach (var sprint in plan.Sprints.OrderBy(x => x.Ordinal).Take(2))
+                if (!sprint.Tickets.Any(ticket => ticket.Kind == WorkItemKinds.Task))
+                    return $"Detailed sprint {sprint.Ordinal} requires at least one child Task.";
+            if (!rollingRefinement && plan.Sprints.OrderBy(x => x.Ordinal).Skip(2)
+                    .Any(sprint => sprint.Tickets.Any(ticket => ticket.Kind == WorkItemKinds.Task)))
+                return "Later planned sprints must retain Stories without Tasks until rolling refinement.";
+        }
         var datedSprints = plan.Sprints.OrderBy(x => x.Ordinal).ToList();
         for (var index = 1; index < datedSprints.Count; index++)
         {
@@ -246,7 +304,9 @@ internal static class ArchitecturePlanPolicy
         return null;
     }
 
-    internal static string? ValidatePublication(ArchitecturePublishRequest? request)
+    internal static string? ValidatePublication(
+        ArchitecturePublishRequest? request,
+        bool requireOutcomeHierarchy = false)
     {
         if (request is null)
             return "The publication request is required.";
@@ -296,7 +356,12 @@ internal static class ArchitecturePlanPolicy
             return "Developer and Software QA assignment pools must use different team members.";
         if (string.IsNullOrWhiteSpace(request.IdempotencyKey))
             return "idempotencyKey is required.";
-        return ValidatePlan(request.Design.Plan, forPublication: true, request.Design.DeliveryProfile);
+        return ValidatePlan(
+            request.Design.Plan,
+            forPublication: true,
+            request.Design.DeliveryProfile,
+            requireOutcomeHierarchy,
+            request.Design.RollingRefinement);
     }
 
     internal static ArchitectureDeliveryProfile BuildDeliveryProfile(
@@ -399,7 +464,10 @@ internal static class ArchitecturePlanPolicy
             request.ProductGoal!.Trim(),
             plan,
             preparedAt,
-            deliveryProfile);
+            deliveryProfile)
+        {
+            RollingRefinement = request.RollingRefinement
+        };
     }
 
     internal static string ComputeHash(
@@ -462,7 +530,10 @@ internal static class ArchitecturePlanPolicy
     internal static string BuildTicketDescription(ArchitectureTicketPlan ticket)
     {
         return $"""
-# Objective
+# Planning key
+{ticket.Key}
+
+## Objective
 {ticket.Objective}
 
 ## Context
@@ -499,6 +570,22 @@ internal static class ArchitecturePlanPolicy
 - No unrelated scope is introduced.
 """;
     }
+
+    internal static string BuildOutcomeEpicDescription(ArchitectureEpicPlan epic) => $"""
+# Planning key
+{epic.Key}
+
+## Outcome
+{epic.Outcome}
+
+## Acceptance criteria
+{Bullets(epic.AcceptanceCriteria)}
+
+## Planning policy
+- Stories under this Epic express customer or product value.
+- Detailed Tasks are created only inside the rolling two-sprint planning horizon.
+- Starting delivery remains an explicit Product Manager action after preflight.
+""";
 
     private static string? ValidateList(IReadOnlyList<string>? values, string name)
     {

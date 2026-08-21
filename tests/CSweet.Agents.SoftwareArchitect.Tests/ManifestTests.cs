@@ -18,6 +18,8 @@ public sealed class ManifestTests
         Assert.Equal(agent.Version, manifest.Version);
         Assert.Contains(SoftwareArchitectProfile.DesignCapability, manifest.Capabilities);
         Assert.Contains(SoftwareArchitectProfile.PublishCapability, manifest.Capabilities);
+        Assert.Contains(SoftwareArchitectProfile.DesignCapabilityV2, manifest.Capabilities);
+        Assert.Contains(SoftwareArchitectProfile.PublishCapabilityV2, manifest.Capabilities);
         Assert.Contains(AgentConfigurationCapabilities.Describe, manifest.Capabilities);
         Assert.Contains(AgentConfigurationCapabilities.Update, manifest.Capabilities);
         Assert.Equal("AlwaysOn", manifest.Runtime.DefaultActivationMode);

@@ -27,6 +27,92 @@ public sealed class SoftwareArchitectAgentTests
     }
 
     [Fact]
+    public async Task DesignV2_RequiresOutcomeEpicStoryAndTaskHierarchy()
+    {
+        var valid = await DesignRuntime().ExecuteCapabilityAsync(
+            new SoftwareArchitectAgent(new StubDesignGenerator(
+                ArchitecturePlanSamples.MinimalHierarchicalPlan())),
+            SoftwareArchitectProfile.DesignCapabilityV2,
+            ValidDesignRequest());
+        var orphaned = ArchitecturePlanSamples.MinimalHierarchicalPlan();
+        var firstSprint = orphaned.Sprints[0];
+        orphaned = orphaned with
+        {
+            Sprints =
+            [
+                firstSprint with
+                {
+                    Tickets = firstSprint.Tickets.Select(ticket =>
+                        ticket.Kind == WorkItemKinds.Task
+                            ? ticket with { ParentStoryKey = "MISSING" }
+                            : ticket).ToArray()
+                },
+                orphaned.Sprints[1]
+            ]
+        };
+        var invalid = await DesignRuntime().ExecuteCapabilityAsync(
+            new SoftwareArchitectAgent(new StubDesignGenerator(orphaned)),
+            SoftwareArchitectProfile.DesignCapabilityV2,
+            ValidDesignRequest());
+
+        Assert.True(valid.Succeeded);
+        Assert.False(invalid.Succeeded);
+        Assert.Contains("parent Story", invalid.Error, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task DesignV2_DefersLaterTasksUntilRollingRefinement()
+    {
+        var plan = ArchitecturePlanSamples.MinimalHierarchicalPlan();
+        var story = plan.Sprints[0].Tickets[0] with
+        {
+            Key = "SA-3",
+            Title = "Extend the customer outcome",
+            Dependencies = []
+        };
+        var task = plan.Sprints[0].Tickets[1] with
+        {
+            Key = "SA-3-T1",
+            Title = "Implement the later extension",
+            ParentStoryKey = story.Key,
+            Dependencies = []
+        };
+        plan = plan with
+        {
+            RequirementTraceability =
+            [
+                new ArchitectureRequirementTrace(
+                    "Deliver the approved product behavior.",
+                    ["Application"],
+                    plan.Sprints.SelectMany(x => x.Tickets).Select(x => x.Key)
+                        .Concat([story.Key, task.Key]).ToArray())
+            ],
+            Sprints = plan.Sprints.Concat(
+            [
+                plan.Sprints[0] with
+                {
+                    Ordinal = 3,
+                    Name = "Sprint 3 - Extension",
+                    Goal = "Extend the approved outcome.",
+                    Tickets = [story, task]
+                }
+            ]).ToArray()
+        };
+        var agent = new SoftwareArchitectAgent(new StubDesignGenerator(plan));
+
+        var initial = await DesignRuntime().ExecuteCapabilityAsync(
+            agent, SoftwareArchitectProfile.DesignCapabilityV2, ValidDesignRequest());
+        var refinement = await DesignRuntime().ExecuteCapabilityAsync(
+            agent,
+            SoftwareArchitectProfile.DesignCapabilityV2,
+            ValidDesignRequest() with { RollingRefinement = true });
+
+        Assert.False(initial.Succeeded);
+        Assert.Contains("Later planned sprints", initial.Error, StringComparison.OrdinalIgnoreCase);
+        Assert.True(refinement.Succeeded);
+    }
+
+    [Fact]
     public async Task Design_MissingAcceptanceCriteriaFailsBeforeModel()
     {
         var generator = new CountingDesignGenerator();
@@ -198,7 +284,7 @@ public sealed class SoftwareArchitectAgentTests
     [Fact]
     public async Task Publish_CreatesEpicSprintTicketEstimateAndScopeDeterministically()
     {
-        var design = FinalizedDesign(ArchitecturePlanSamples.MinimalValidPlan());
+        var design = FinalizedDesign(ArchitecturePlanSamples.MinimalHierarchicalPlan());
         var board = Board(design.BoardId);
         var itemKeys = new Dictionary<string, WorkItem>(StringComparer.Ordinal);
         var sprintKeys = new Dictionary<string, WorkSprint>(StringComparer.Ordinal);
@@ -342,7 +428,7 @@ public sealed class SoftwareArchitectAgentTests
         var agent = new SoftwareArchitectAgent();
         var draft = await runtime.ExecuteCapabilityAsync(
             agent,
-            SoftwareArchitectProfile.PublishCapability,
+            SoftwareArchitectProfile.PublishCapabilityV2,
             ValidPublication(design) with
             {
                 RepositoryId = Guid.Empty,
@@ -350,38 +436,50 @@ public sealed class SoftwareArchitectAgentTests
             });
         var first = await runtime.ExecuteCapabilityAsync(
             agent,
-            SoftwareArchitectProfile.PublishCapability,
+            SoftwareArchitectProfile.PublishCapabilityV2,
             ValidPublication(design));
         var second = await runtime.ExecuteCapabilityAsync(
             agent,
-            SoftwareArchitectProfile.PublishCapability,
+            SoftwareArchitectProfile.PublishCapabilityV2,
             ValidPublication(design));
 
         Assert.True(draft.Succeeded);
         Assert.False(draft.Value!.Value.GetProperty("deliveryFinalized").GetBoolean());
         Assert.True(first.Succeeded);
         Assert.True(second.Succeeded);
-        Assert.Equal(2, itemKeys.Count);
-        Assert.Single(sprintKeys);
+        Assert.Equal(6, itemKeys.Count);
+        Assert.Equal(2, sprintKeys.Count);
         Assert.All(createRequests.GroupBy(x => x.IdempotencyKey), group => Assert.Equal(3, group.Count()));
-        Assert.All(sprintRequests, request => Assert.Contains(design.PlanId.ToString("N"), request.IdempotencyKey));
+        Assert.All(createRequests.Take(6), request => Assert.Null(request.DueDate));
+        Assert.All(sprintRequests, request => Assert.Contains(design.BoardId.ToString("N"), request.IdempotencyKey));
+        Assert.All(sprintRequests.Take(2), request =>
+        {
+            Assert.Null(request.StartsAt);
+            Assert.Null(request.EndsAt);
+        });
+        Assert.Equal(8, estimateRequests.Count);
         Assert.All(estimateRequests, request => Assert.Equal(5, request.EstimatePoints));
         Assert.All(scopeRequests, request => Assert.NotNull(request.SprintId));
-        Assert.Equal(2, moveRequests.Count);
+        Assert.Equal(4, moveRequests.Count);
         Assert.All(moveRequests, request => Assert.Equal(
             "Ready For Development",
             board.Columns.Single(x => x.Id == request.TargetColumnId).Name));
         Assert.Equal(WorkItemKinds.Epic, createRequests[0].Kind);
-        Assert.Equal(WorkItemKinds.Story, createRequests[1].Kind);
-        Assert.Contains("## Context", createRequests[1].Description);
-        Assert.Contains("## Acceptance criteria", createRequests[1].Description);
-        Assert.Contains("## Ordered implementation guidance", createRequests[1].Description);
-        Assert.Contains("Negative:", createRequests[1].Description);
-        Assert.Contains("Observability:", createRequests[1].Description);
-        Assert.Contains("## Migration and rollback", createRequests[1].Description);
-        Assert.NotNull(createRequests[1].Planning);
-        Assert.Null(createRequests[1].Delivery);
-        Assert.Equal(2, finalizeRequests.Count);
+        Assert.Equal(WorkItemKinds.Epic, createRequests[1].Kind);
+        Assert.Equal(WorkItemKinds.Story, createRequests[2].Kind);
+        Assert.Contains(createRequests[2].ParentItemId,
+            itemKeys.Values.Where(x => x.Kind == WorkItemKinds.Epic).Select(x => (Guid?)x.Id));
+        var taskRequest = createRequests.First(x => x.Kind == WorkItemKinds.Task);
+        Assert.Equal(itemKeys.Values.Single(x => x.Title == createRequests[2].Title).Id, taskRequest.ParentItemId);
+        Assert.Contains("## Context", createRequests[2].Description);
+        Assert.Contains("## Acceptance criteria", createRequests[2].Description);
+        Assert.Contains("## Ordered implementation guidance", createRequests[2].Description);
+        Assert.Contains("Negative:", createRequests[2].Description);
+        Assert.Contains("Observability:", createRequests[2].Description);
+        Assert.Contains("## Migration and rollback", createRequests[2].Description);
+        Assert.NotNull(createRequests[2].Planning);
+        Assert.Null(createRequests[2].Delivery);
+        Assert.Equal(8, finalizeRequests.Count);
         Assert.Equal(
             Guid.Parse("cccccccc-cccc-cccc-cccc-cccccccccccc"),
             finalizeRequests[0].AccountableOrganizationUserId);
@@ -406,7 +504,7 @@ public sealed class SoftwareArchitectAgentTests
             DeveloperInstallationIds = [Guid.NewGuid()]
         };
         var rejected = await runtime.ExecuteCapabilityAsync(
-            agent, SoftwareArchitectProfile.PublishCapability, invalidPool);
+            agent, SoftwareArchitectProfile.PublishCapabilityV2, invalidPool);
         Assert.False(rejected.Succeeded);
         Assert.Contains("outside the active approved team", rejected.Error, StringComparison.OrdinalIgnoreCase);
         Assert.Equal(writesBeforeInvalidPool, createRequests.Count);
@@ -750,10 +848,8 @@ public sealed class SoftwareArchitectAgentTests
                 null, turnId, 0, messageId));
 
         Assert.Null(started);
-        Assert.NotNull(sentToProductManager);
-        Assert.Contains("ready", sentToProductManager!.Value.GetProperty("content").GetString(),
-            StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("owns starting", runtime.Progress[0].GetProperty("delta").GetString(),
+        Assert.Null(sentToProductManager);
+        Assert.Contains("active planning session", runtime.Progress[0].GetProperty("delta").GetString(),
             StringComparison.OrdinalIgnoreCase);
     }
 

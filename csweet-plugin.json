@@ -4,7 +4,7 @@
   "kind": "agent",
   "id": "com.csweet.software-architect",
   "name": "C-Sweet Software Architect",
-  "version": "0.7.2",
+  "version": "0.8.0",
   "publisher": {
     "id": "com.csweet",
     "name": "C-Sweet"
@@ -166,8 +166,8 @@
       "idempotency": "work-item"
     },
     {
-      "name": "software-architecture.design.v1",
-      "description": "Create a typed, read-only system design and incremental implementation plan.",
+      "name": "software-architecture.design.v2",
+      "description": "Create a typed, read-only outcome hierarchy and rolling two-sprint implementation plan.",
       "inputSchema": {
         "type": "object",
         "additionalProperties": false,
@@ -208,13 +208,14 @@
             "maximum": 30
           },
           "sourceConversationId": { "type": ["string", "null"], "format": "uuid" },
+          "rollingRefinement": { "type": "boolean" },
           "idempotencyKey": { "type": "string", "minLength": 1, "maxLength": 500 }
         }
       },
       "outputSchema": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["planId", "planHash", "boardId", "productGoal", "plan", "preparedAt", "deliveryProfile"],
+        "required": ["planId", "planHash", "boardId", "productGoal", "plan", "preparedAt", "deliveryProfile", "rollingRefinement"],
         "properties": {
           "planId": { "type": "string", "format": "uuid" },
           "planHash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
@@ -222,7 +223,8 @@
           "productGoal": { "type": "string" },
           "plan": { "$ref": "#/$defs/architecturePlan" },
           "preparedAt": { "type": "string", "format": "date-time" },
-          "deliveryProfile": { "$ref": "#/$defs/deliveryProfile" }
+          "deliveryProfile": { "$ref": "#/$defs/deliveryProfile" },
+          "rollingRefinement": { "type": "boolean" }
         },
         "$defs": {
           "stringArray": {
@@ -307,7 +309,7 @@
               "key", "title", "kind", "priority", "objective", "context", "requirements",
               "acceptanceCriteria", "constraints", "interfaceAndDataChanges",
               "implementationGuidance", "tests", "dependencies", "migrationAndRollback",
-              "estimatePoints"
+              "estimatePoints", "epicKey", "parentStoryKey"
             ],
             "properties": {
               "key": { "type": "string" },
@@ -324,7 +326,20 @@
               "tests": { "$ref": "#/$defs/stringArray" },
               "dependencies": { "$ref": "#/$defs/stringArray" },
               "migrationAndRollback": { "type": "string" },
-              "estimatePoints": { "type": ["number", "null"], "exclusiveMinimum": 0, "maximum": 100 }
+              "estimatePoints": { "type": ["number", "null"], "exclusiveMinimum": 0, "maximum": 100 },
+              "epicKey": { "type": ["string", "null"] },
+              "parentStoryKey": { "type": ["string", "null"] }
+            }
+          },
+          "epic": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["key", "title", "outcome", "acceptanceCriteria"],
+            "properties": {
+              "key": { "type": "string", "minLength": 1 },
+              "title": { "type": "string", "minLength": 1 },
+              "outcome": { "type": "string", "minLength": 1 },
+              "acceptanceCriteria": { "$ref": "#/$defs/stringArray" }
             }
           },
           "sprint": {
@@ -351,7 +366,7 @@
               "summary", "systemContext", "components", "interfaces", "dataFlows",
               "decisions", "qualityAttributes", "failureModes", "migrationPlan",
               "rolloutPlan", "rollbackPlan", "risks", "assumptions", "blockingQuestions",
-              "requirementTraceability", "sprints"
+              "requirementTraceability", "sprints", "outcomeEpics"
             ],
             "properties": {
               "summary": { "type": "string" },
@@ -381,6 +396,11 @@
                 "minItems": 1,
                 "items": { "$ref": "#/$defs/trace" }
               },
+              "outcomeEpics": {
+                "type": "array",
+                "minItems": 1,
+                "items": { "$ref": "#/$defs/epic" }
+              },
               "sprints": {
                 "type": "array",
                 "minItems": 1,
@@ -394,8 +414,8 @@
       "idempotency": "caller-key"
     },
     {
-      "name": "software-architecture.publish-plan.v1",
-      "description": "Publish an approved planning draft, then finalize the same tickets when repository delivery is approved.",
+      "name": "software-architecture.publish-plan.v2",
+      "description": "Publish approved outcome Epics, sprint-grouped Stories, and rolling-horizon Tasks.",
       "inputSchema": {
         "type": "object",
         "additionalProperties": false,
@@ -433,7 +453,7 @@
           "design": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["planId", "planHash", "boardId", "productGoal", "plan", "preparedAt", "deliveryProfile"],
+            "required": ["planId", "planHash", "boardId", "productGoal", "plan", "preparedAt", "deliveryProfile", "rollingRefinement"],
             "properties": {
               "planId": { "type": "string", "format": "uuid" },
               "planHash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
@@ -441,7 +461,8 @@
               "productGoal": { "type": "string" },
               "plan": { "$ref": "#/$defs/architecturePlan" },
               "preparedAt": { "type": "string", "format": "date-time" },
-              "deliveryProfile": { "$ref": "#/$defs/deliveryProfile" }
+              "deliveryProfile": { "$ref": "#/$defs/deliveryProfile" },
+              "rollingRefinement": { "type": "boolean" }
             }
           },
           "approval": {
@@ -548,7 +569,7 @@
               "key", "title", "kind", "priority", "objective", "context", "requirements",
               "acceptanceCriteria", "constraints", "interfaceAndDataChanges",
               "implementationGuidance", "tests", "dependencies", "migrationAndRollback",
-              "estimatePoints"
+              "estimatePoints", "epicKey", "parentStoryKey"
             ],
             "properties": {
               "key": { "type": "string" },
@@ -565,7 +586,20 @@
               "tests": { "$ref": "#/$defs/stringArray" },
               "dependencies": { "$ref": "#/$defs/stringArray" },
               "migrationAndRollback": { "type": "string" },
-              "estimatePoints": { "type": ["number", "null"], "exclusiveMinimum": 0, "maximum": 100 }
+              "estimatePoints": { "type": ["number", "null"], "exclusiveMinimum": 0, "maximum": 100 },
+              "epicKey": { "type": ["string", "null"] },
+              "parentStoryKey": { "type": ["string", "null"] }
+            }
+          },
+          "epic": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["key", "title", "outcome", "acceptanceCriteria"],
+            "properties": {
+              "key": { "type": "string", "minLength": 1 },
+              "title": { "type": "string", "minLength": 1 },
+              "outcome": { "type": "string", "minLength": 1 },
+              "acceptanceCriteria": { "$ref": "#/$defs/stringArray" }
             }
           },
           "sprint": {
@@ -592,7 +626,7 @@
               "summary", "systemContext", "components", "interfaces", "dataFlows",
               "decisions", "qualityAttributes", "failureModes", "migrationPlan",
               "rolloutPlan", "rollbackPlan", "risks", "assumptions", "blockingQuestions",
-              "requirementTraceability", "sprints"
+              "requirementTraceability", "sprints", "outcomeEpics"
             ],
             "properties": {
               "summary": { "type": "string" },
@@ -622,6 +656,11 @@
                 "minItems": 1,
                 "items": { "$ref": "#/$defs/trace" }
               },
+              "outcomeEpics": {
+                "type": "array",
+                "minItems": 1,
+                "items": { "$ref": "#/$defs/epic" }
+              },
               "sprints": {
                 "type": "array",
                 "minItems": 1,
@@ -634,10 +673,24 @@
       "outputSchema": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["planId", "epicId", "sprints", "tickets", "publishedAt"],
+        "required": ["planId", "epicId", "epics", "sprints", "tickets", "publishedAt", "deliveryFinalized"],
         "properties": {
           "planId": { "type": "string", "format": "uuid" },
           "epicId": { "type": "string", "format": "uuid" },
+          "epics": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["key", "itemId", "title"],
+              "properties": {
+                "key": { "type": "string" },
+                "itemId": { "type": "string", "format": "uuid" },
+                "title": { "type": "string" }
+              }
+            }
+          },
           "sprints": {
             "type": "array",
             "items": {
@@ -665,8 +718,56 @@
               }
             }
           },
-          "publishedAt": { "type": "string", "format": "date-time" }
+          "publishedAt": { "type": "string", "format": "date-time" },
+          "deliveryFinalized": { "type": "boolean" }
         }
+      },
+      "executionTimeoutSeconds": 180,
+      "idempotency": "caller-key",
+      "riskClass": "sensitive"
+    },
+    {
+      "name": "software-architecture.design.v1",
+      "description": "Compatibility surface for the original flat architecture planning contract.",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["boardId", "productGoal", "requirements", "acceptanceCriteria", "idempotencyKey"],
+        "properties": {
+          "boardId": { "type": "string", "format": "uuid" },
+          "productGoal": { "type": "string", "minLength": 1 },
+          "requirements": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+          "acceptanceCriteria": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+          "idempotencyKey": { "type": "string", "minLength": 1 }
+        }
+      },
+      "outputSchema": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["planId", "planHash", "boardId", "productGoal", "plan", "preparedAt", "deliveryProfile"]
+      },
+      "executionTimeoutSeconds": 300,
+      "idempotency": "caller-key"
+    },
+    {
+      "name": "software-architecture.publish-plan.v1",
+      "description": "Compatibility surface for publishing an approved v1 flat architecture plan.",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["boardId", "design", "approval", "idempotencyKey", "firstSprintSequence"],
+        "properties": {
+          "boardId": { "type": "string", "format": "uuid" },
+          "design": { "type": "object" },
+          "approval": { "type": "object" },
+          "idempotencyKey": { "type": "string", "minLength": 1 },
+          "firstSprintSequence": { "type": "integer", "minimum": 1 }
+        }
+      },
+      "outputSchema": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["planId", "epicId", "sprints", "tickets", "publishedAt"]
       },
       "executionTimeoutSeconds": 180,
       "idempotency": "caller-key",
