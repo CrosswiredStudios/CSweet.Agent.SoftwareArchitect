@@ -1,7 +1,7 @@
 # C-Sweet Software Architect
 
-First-party C-Sweet Software Architect agent, version `0.8.1`, built on .NET 10,
-`CSweet.Agent.SDK` 3.11.1, Microsoft Agent Framework Harness 1.15.0, and manifest protocol v2.
+First-party C-Sweet Software Architect agent, version `0.9.0`, built on .NET 10,
+`CSweet.Agent.SDK` 3.12.0, Microsoft Agent Framework Harness 1.15.0, and manifest protocol v2.
 
 The agent converts approved product requirements into maintainable system designs, incremental
 sprint plans, and developer-ready tickets. Product and Project Managers retain ownership of
@@ -54,8 +54,8 @@ the authority boundary for designing and publishing work.
 
 - `llmProviderId`: approved C-Sweet provider profile.
 - `llmModel`: chat model used for design and conversation.
-- `maxContextWindowTokens`: harness context budget; default 128,000.
-- `maxOutputTokens`: one-response and compaction reserve; default 16,000.
+- `maxContextWindowTokens`: bounded planning context budget; default 32,000.
+- `maxOutputTokens`: one-response budget; default 8,000 and always lower than the context budget.
 - `defaultSprintLengthDays`: human-inclusive cadence used when a request omits one; default 14.
   Agent-only teams default to one-day dependency-based execution windows and do not receive human
   story-point estimates.

@@ -5,19 +5,20 @@ namespace CSweet.Agents.SoftwareArchitect;
 public static class SoftwareArchitectProfile
 {
     public const string AgentId = "com.csweet.software-architect";
-    public const string Version = "0.8.1";
+    public const string Version = "0.9.0";
     public const string DisplayName = "C-Sweet Software Architect";
     public const string DesignCapability = "software-architecture.design.v1";
     public const string PublishCapability = "software-architecture.publish-plan.v1";
     public const string DesignCapabilityV2 = "software-architecture.design.v2";
     public const string PublishCapabilityV2 = "software-architecture.publish-plan.v2";
+    public const string PublishStoryTasksCapability = "software-architecture.publish-story-tasks.v1";
     public const string ConverseCapability = AssistantCapabilities.Converse;
     public const string SummarizeCapability = AssistantCapabilities.SummarizeActivity;
     public const string PlanWorkCapability = AssistantCapabilities.PlanWork;
 
     public const int MaximumIterationsPerRequest = 16;
-    public const int DefaultContextWindowTokens = 128_000;
-    public const int DefaultOutputTokens = 16_000;
+    public const int DefaultContextWindowTokens = 32_000;
+    public const int DefaultOutputTokens = 8_000;
     public const int DefaultSprintLengthDays = 14;
     public const int DefaultAgentOnlySprintLengthDays = 1;
 

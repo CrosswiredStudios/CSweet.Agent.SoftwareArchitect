@@ -74,7 +74,8 @@ public sealed class SoftwareArchitectAgent : CSweetAgentBase
                 minimum: 1_000,
                 maximum: 200_000,
                 step: 1_000,
-                defaultValue: SoftwareArchitectProfile.DefaultOutputTokens)
+                defaultValue: SoftwareArchitectProfile.DefaultOutputTokens,
+                lessThanFieldKey: "maxContextWindowTokens")
             .Number(
                 "defaultSprintLengthDays",
                 "Default sprint length in days",
@@ -123,7 +124,7 @@ public sealed class SoftwareArchitectAgent : CSweetAgentBase
             await HandleConversationMessageAsync(message, context, cancellationToken);
     }
 
-    public override Task<AgentCoordinationTurnResult> HandleCoordinationTurnAsync(
+    public override async Task<AgentCoordinationTurnResult> HandleCoordinationTurnAsync(
         AgentCoordinationTurnRequest request,
         AgentRuntimeContext context,
         CancellationToken cancellationToken)
@@ -134,59 +135,53 @@ public sealed class SoftwareArchitectAgent : CSweetAgentBase
         {
             var outcome = latest?.Disposition == AgentCoordinationDispositions.Blocked
                 ? "blocked" : "completed";
-            return Task.FromResult(AgentCoordinationTurnResult.Completed($"""
+            return AgentCoordinationTurnResult.Completed($"""
 Collaboration {outcome}: {request.Objective}
 
 Result: {latest?.Content ?? "No terminal detail was supplied."}
 Confirmed actions: the Product Manager owns the requirements, acceptance criteria, priorities, and board reconciliation; the Architect supplied technical boundaries, dependencies, quality attributes, and developer-ready guidance. No authority or grant was transferred between agents.
-"""));
+""");
         }
 
-        var prompt = latest?.Content ?? request.Objective;
-        if (prompt.Contains("Task decomposition", StringComparison.OrdinalIgnoreCase))
+        if (latest?.Artifact is not { } artifact ||
+            !string.Equals(artifact.Type, IncrementalPlanningArtifactTypes.ProductBrief, StringComparison.Ordinal))
         {
-            return Task.FromResult(AgentCoordinationTurnResult.Continue($"""
-Task decomposition complete:
-
-- Every proposed Story will have dependency-ordered child Tasks in the same planned sprint.
-- Each Task will carry purpose, affected boundary, requirements, technical constraints, failure behavior, tests, verification evidence, and definition of done.
-- All provisional tickets remain unassigned, undated, unestimated Backlog work until authoritative delivery details exist.
-
-Product Manager: review the complete technical decomposition and authorize governed publication when the product scope is approved.
-"""));
+            return AgentCoordinationTurnResult.Continue(
+                "Please send the current Epic or Story as a structured product-management.brief.v1 artifact; legacy text alone is not a completed planning stage.");
         }
-        if (!prompt.Contains("outcome Epics", StringComparison.OrdinalIgnoreCase) &&
-            prompt.Contains("Stories", StringComparison.OrdinalIgnoreCase) &&
-            prompt.Contains("sprint", StringComparison.OrdinalIgnoreCase))
+
+        var brief = artifact.Payload.Deserialize<IncrementalProductBrief>(IncrementalPlanningJson.Options)
+            ?? throw new ArchitectureDesignException("The incremental product brief artifact is empty.");
+        var harness = new IncrementalArchitectureHarness(_llmClientFactory);
+        if (string.Equals(brief.Stage, "stories", StringComparison.OrdinalIgnoreCase))
         {
-            var proposedStories = request.SuccessCriteria.Count == 0
-                ? "- **STORY-01 — Deliver the approved outcome** (Sprint 1): " + request.Objective
-                : string.Join(Environment.NewLine, request.SuccessCriteria.Select((criterion, index) =>
-                    $"- **STORY-{index + 1:00} — Outcome slice {index + 1}** (Sprint {index + 1}): {criterion}"));
-            return Task.FromResult(AgentCoordinationTurnResult.Continue($"""
-Story and sprint proposal:
-
-{proposedStories}
-
-The first Planned sprint establishes the smallest end-to-end outcome. Later Planned sprints follow
-the approved success-criterion order unless a technical dependency requires an earlier enabling slice.
-Story containment remains under the approved outcome Epics; cross-Story prerequisites remain explicit dependencies.
-
-Product Manager: confirm Story priority, acceptance boundaries, non-goals, and sprint goals before I decompose every Story.
-"""));
+            var proposal = await harness.ProposeStoriesAsync(brief, context, Settings, cancellationToken);
+            return AgentCoordinationTurnResult.Continue(
+                $"Proposed {proposal.Stories.Count} Story ticket(s) for {brief.Epic.Title}; please approve the scope and planned sprint grouping.",
+                new AgentCoordinationArtifactSubmission(
+                    IncrementalPlanningArtifactTypes.StoryProposal, "1.0", $"{brief.PlanKey}:{brief.Epic.Key}:stories",
+                    0, true, JsonSerializer.SerializeToElement(proposal, IncrementalPlanningJson.Options)));
         }
 
-        var confidenceCriteria = request.SuccessCriteria.Count == 0
-            ? "the coordination session's approved success criteria"
-            : string.Join("; ", request.SuccessCriteria);
-        return Task.FromResult(AgentCoordinationTurnResult.Continue($"""
-Epic proposal:
+        if (string.Equals(brief.Stage, "tasks", StringComparison.OrdinalIgnoreCase))
+        {
+            var proposal = await harness.ProposeTasksAsync(brief, context, Settings, cancellationToken);
+            return AgentCoordinationTurnResult.Continue(
+                $"Prepared Task page {proposal.PageOrdinal + 1} for {brief.Story!.Title}: {proposal.Tasks.Count} junior-ready Task ticket(s).",
+                new AgentCoordinationArtifactSubmission(
+                    IncrementalPlanningArtifactTypes.TaskProposal, "1.0",
+                    $"{brief.PlanKey}:{brief.Story.Key}:tasks", proposal.PageOrdinal,
+                    proposal.IsFinalPage, JsonSerializer.SerializeToElement(proposal, IncrementalPlanningJson.Options)));
+        }
 
-- **Core Product Outcome** — deliver the approved user-visible outcome: {request.Objective}
-- **Delivery Confidence** — prove: {confidenceCriteria}
-
-These Epics separate customer value from the cross-cutting confidence required to release it safely. Product Manager: confirm or adjust these outcome boundaries, then request the Story and sprint proposal.
-"""));
+        var question = new IncrementalArchitectureQuestion(
+            brief.PlanKey, brief.Story?.Key ?? brief.Epic.Key,
+            "Which bounded planning stage should I perform for this scope?");
+        return AgentCoordinationTurnResult.Blocked(
+            $"Focused product question: {question.Question}",
+            new AgentCoordinationArtifactSubmission(
+                IncrementalPlanningArtifactTypes.Question, "1.0", $"{brief.PlanKey}:question",
+                0, true, JsonSerializer.SerializeToElement(question, IncrementalPlanningJson.Options)));
     }
 
     protected override async Task<AgentWorkResult> ExecuteCapabilityCoreAsync(
@@ -205,6 +200,8 @@ These Epics separate customer value from the cross-cutting confidence required t
                 await ExecutePublicationAsync(request, context, hierarchical: false, cancellationToken),
             SoftwareArchitectProfile.PublishCapabilityV2 =>
                 await ExecutePublicationAsync(request, context, hierarchical: true, cancellationToken),
+            SoftwareArchitectProfile.PublishStoryTasksCapability =>
+                await ExecuteStoryTaskPublicationAsync(request, context, cancellationToken),
             SoftwareArchitectProfile.ConverseCapability or
             SoftwareArchitectProfile.SummarizeCapability or
             SoftwareArchitectProfile.PlanWorkCapability =>
@@ -212,6 +209,130 @@ These Epics separate customer value from the cross-cutting confidence required t
             _ => AgentWorkResult.Failure(
                 $"Capability '{request.Capability}' is not supported by this agent.")
         };
+    }
+
+    private static async Task<AgentWorkResult> ExecuteStoryTaskPublicationAsync(
+        AgentCapabilityRequest request,
+        AgentRuntimeContext context,
+        CancellationToken cancellationToken)
+    {
+        PublishStoryTasksRequest? input;
+        try { input = DeserializePayload<PublishStoryTasksRequest>(request.Arguments); }
+        catch (JsonException) { return AgentWorkResult.Failure("The Story Task publication request is not valid.", "architecture.payload_invalid"); }
+        if (input is null || input.BoardId == Guid.Empty || input.StoryId == Guid.Empty ||
+            input.SprintId == Guid.Empty || string.IsNullOrWhiteSpace(input.IdempotencyKey) ||
+            string.IsNullOrWhiteSpace(input.ApprovalRationale) || input.Proposal.Tasks.Count is < 1 or > 8 ||
+            input.Proposal.Tasks.Any(x =>
+                string.IsNullOrWhiteSpace(x.Key) || string.IsNullOrWhiteSpace(x.Title) ||
+                string.IsNullOrWhiteSpace(x.Purpose) || string.IsNullOrWhiteSpace(x.AffectedBoundary) ||
+                string.IsNullOrWhiteSpace(x.DefinitionOfDone) || x.Requirements.Count == 0 ||
+                x.TechnicalConstraints.Count == 0 || x.EdgeCases.Count == 0 ||
+                x.TestExpectations.Count == 0 || x.VerificationEvidence.Count == 0))
+            return AgentWorkResult.Failure("The Story Task publication request is incomplete or exceeds eight Tasks.", "architecture.validation_failed");
+
+        var board = await context.Platform.Work.ReadBoardAsync(input.BoardId, cancellationToken);
+        var story = board.Items.SingleOrDefault(x => x.Id == input.StoryId && x.Kind == WorkItemKinds.Story);
+        if (story is null || story.SprintId != input.SprintId)
+            return AgentWorkResult.Failure("The approved Story does not exist in the requested planned sprint.", "architecture.scope_mismatch");
+        var sprint = (await context.Platform.Work.ListSprintsAsync(input.BoardId, cancellationToken))
+            .SingleOrDefault(x => x.Id == input.SprintId);
+        if (sprint is null || !string.Equals(sprint.Status, "Planned", StringComparison.OrdinalIgnoreCase))
+            return AgentWorkResult.Failure("Task publication requires the Story's sprint to remain Planned.", "architecture.sprint_not_planned");
+
+        var known = board.Items.Where(x => x.ParentItemId == input.StoryId)
+            .ToDictionary(x => ExtractStableKey(x.Title), x => x.Id, StringComparer.OrdinalIgnoreCase);
+        var published = new List<PublishedStoryTask>();
+        foreach (var task in input.Proposal.Tasks)
+        {
+            var dependencies = task.Dependencies.Select(key =>
+            {
+                if (!known.TryGetValue(key, out var id))
+                    throw new InvalidOperationException($"Task dependency '{key}' has not been published yet.");
+                return id;
+            }).ToArray();
+            var planning = new WorkItemPlanningSpecification(
+                task.Requirements,
+                task.VerificationEvidence,
+                task.TechnicalConstraints.Concat(task.EdgeCases.Select(x => $"Edge case: {x}"))
+                    .Concat(task.TestExpectations.Select(x => $"Test: {x}"))
+                    .Append($"Definition of done: {task.DefinitionOfDone}")
+                    .ToArray())
+            {
+                DependencyItemIds = dependencies
+            };
+            var item = await context.Platform.Work.CreateItemAsync(
+                new CreateWorkItemRequest(
+                    input.BoardId,
+                    Limit($"[{task.Key}] {task.Title}", 200),
+                    BuildJuniorReadyTaskDescription(task, story.Title),
+                    WorkItemKinds.Task,
+                    WorkPriorities.Medium,
+                    null,
+                    input.StoryId,
+                    null,
+                    $"{input.IdempotencyKey}:task:{NormalizeKey(task.Key)}")
+                { Planning = planning },
+                cancellationToken);
+            if (item.SprintId != input.SprintId)
+                item = await context.Platform.Work.SetItemSprintAsync(
+                    new SetWorkItemSprintRequest(
+                        input.BoardId, item.Id, input.SprintId, item.Revision,
+                        $"{input.IdempotencyKey}:scope:{NormalizeKey(task.Key)}"),
+                    cancellationToken);
+            known[task.Key] = item.Id;
+            published.Add(new PublishedStoryTask(task.Key, item.Id, item.Title));
+        }
+        return AgentWorkResult.Success(new PublishStoryTasksResponse(
+            input.BoardId, input.StoryId, input.SprintId, input.Proposal.StoryKey,
+            input.Proposal.PageOrdinal, input.Proposal.IsFinalPage, published, DateTimeOffset.UtcNow));
+    }
+
+    private static string BuildJuniorReadyTaskDescription(JuniorReadyTask task, string storyTitle) => $"""
+## Objective
+{task.Purpose}
+
+## Context
+Parent Story: {storyTitle}
+Affected boundary: {task.AffectedBoundary}
+
+## Requirements
+{string.Join(Environment.NewLine, task.Requirements.Select(x => $"- {x}"))}
+
+## Acceptance criteria
+{string.Join(Environment.NewLine, task.VerificationEvidence.Select(x => $"- {x}"))}
+
+## Interfaces and data
+Implement within {task.AffectedBoundary}; preserve all approved external contracts unless this Task explicitly changes them.
+
+## Ordered implementation guidance
+1. Confirm the parent Story contract and prerequisite evidence.
+2. Implement the smallest bounded behavior described by this Task.
+3. Add failure handling and objective verification before marking the Task complete.
+
+## Tests
+{string.Join(Environment.NewLine, task.TestExpectations.Select(x => $"- {x}"))}
+
+## Dependencies
+{(task.Dependencies.Count == 0 ? "- None." : string.Join(Environment.NewLine, task.Dependencies.Select(x => $"- {x}")))}
+
+## Constraints
+{string.Join(Environment.NewLine, task.TechnicalConstraints.Select(x => $"- {x}"))}
+
+Edge cases and expected failure behavior:
+{string.Join(Environment.NewLine, task.EdgeCases.Select(x => $"- {x}"))}
+
+## Migration and rollback
+No migration is required unless the implementation changes persisted data or a public contract. If it does, add a reversible migration and prove rollback before completion.
+
+## Definition of done
+{task.DefinitionOfDone}
+""";
+
+    private static string ExtractStableKey(string title)
+    {
+        if (!title.StartsWith('[')) return title;
+        var end = title.IndexOf(']');
+        return end > 1 ? title[1..end] : title;
     }
 
     private async Task<AgentWorkResult> ExecuteDesignAsync(

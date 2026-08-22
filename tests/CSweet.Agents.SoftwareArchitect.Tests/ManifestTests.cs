@@ -20,6 +20,7 @@ public sealed class ManifestTests
         Assert.Contains(SoftwareArchitectProfile.PublishCapability, manifest.Capabilities);
         Assert.Contains(SoftwareArchitectProfile.DesignCapabilityV2, manifest.Capabilities);
         Assert.Contains(SoftwareArchitectProfile.PublishCapabilityV2, manifest.Capabilities);
+        Assert.Contains(SoftwareArchitectProfile.PublishStoryTasksCapability, manifest.Capabilities);
         Assert.Contains(AgentConfigurationCapabilities.Describe, manifest.Capabilities);
         Assert.Contains(AgentConfigurationCapabilities.Update, manifest.Capabilities);
         Assert.Equal("AlwaysOn", manifest.Runtime.DefaultActivationMode);
@@ -30,10 +31,12 @@ public sealed class ManifestTests
             SoftwareArchitectProfile.DefaultContextWindowTokens,
             configuration.Single(field => field.GetProperty("key").GetString() == "maxContextWindowTokens")
                 .GetProperty("defaultValue").GetInt32());
+        var outputTokens = configuration.Single(field =>
+            field.GetProperty("key").GetString() == "maxOutputTokens");
         Assert.Equal(
             SoftwareArchitectProfile.DefaultOutputTokens,
-            configuration.Single(field => field.GetProperty("key").GetString() == "maxOutputTokens")
-                .GetProperty("defaultValue").GetInt32());
+            outputTokens.GetProperty("defaultValue").GetInt32());
+        Assert.Equal("maxContextWindowTokens", outputTokens.GetProperty("lessThanFieldKey").GetString());
         Assert.Equal(
             SoftwareArchitectProfile.DefaultSprintLengthDays,
             configuration.Single(field => field.GetProperty("key").GetString() == "defaultSprintLengthDays")
