@@ -848,7 +848,8 @@ No migration is required unless the implementation changes persisted data or a p
         AssistantCapabilityInput input,
         string capability,
         AgentRuntimeContext context,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        AgentTurnStreamWriter? turnStream = null)
     {
         var providerProfileId = input.ProviderProfileId != Guid.Empty
             ? input.ProviderProfileId
@@ -859,7 +860,13 @@ No migration is required unless the implementation changes persisted data or a p
             throw new ArchitectureDesignException(
                 "Configure an approved LLM provider and model before starting a conversation.");
 
-        var selection = new AgentLlmSelection(providerProfileId.Value, model);
+        var selection = new AgentLlmSelection(
+            providerProfileId.Value,
+            model,
+            new AgentLlmInvocationContext(
+                Guid.TryParse(input.ConversationId, out var conversationId) ? conversationId : null,
+                input.ChatTurnId == Guid.Empty ? null : input.ChatTurnId,
+                "primary"));
         var chatClient = _llmClientFactory is null
             ? context.CreateChatClient(selection)
             : await _llmClientFactory.CreateChatClientAsync(selection, cancellationToken);
@@ -874,7 +881,14 @@ No migration is required unless the implementation changes persisted data or a p
             {
                 Id = SoftwareArchitectProfile.AgentId,
                 Name = context.Identity?.DisplayName ?? SoftwareArchitectProfile.DisplayName,
-                ChatOptions = new ChatOptions { Instructions = instructions }
+                ChatOptions = new ChatOptions
+                {
+                    Instructions = instructions,
+                    Reasoning = new ReasoningOptions
+                    {
+                        Output = ReasoningOutput.Full
+                    }
+                }
             });
         var business = await context.Platform.ReadBusinessProfileAsync(cancellationToken);
         var organization = await context.Platform.ReadOrganizationSnapshotAsync(cancellationToken);
@@ -899,7 +913,17 @@ work-board mutations from conversation.
                            session,
                            options: null,
                            cancellationToken))
+        {
+            if (turnStream is not null)
+            {
+                foreach (var reasoning in update.Contents.OfType<TextReasoningContent>())
+                    await turnStream.WriteReasoningAsync(reasoning.Text, cancellationToken);
+                if (!string.IsNullOrEmpty(update.Text))
+                    await turnStream.WriteDraftAsync(update.Text, cancellationToken);
+            }
+
             output.Append(update.Text);
+        }
         return output.ToString();
     }
 
@@ -985,19 +1009,42 @@ work-board mutations from conversation.
             return;
         }
 
-        var response = await GenerateConversationResponseAsync(
-            new AssistantCapabilityInput(
-                received.ProviderProfileId,
-                received.ConversationId,
-                sourceContent,
-                received.Context,
-                received.UserId,
-                received.MessageId,
-                received.TurnId),
-            SoftwareArchitectProfile.ConverseCapability,
-            context,
-            cancellationToken);
-        await PublishConversationResponseAsync(received, response, context, cancellationToken);
+        await using var turnStream = context.CreateTurnStream(
+            received.ConversationId,
+            received.TurnId,
+            received.Attempt);
+        await turnStream.ActivityStartedAsync(
+            "Software Architect accepted the request.",
+            cancellationToken: cancellationToken);
+        try
+        {
+            var response = await GenerateConversationResponseAsync(
+                new AssistantCapabilityInput(
+                    received.ProviderProfileId,
+                    received.ConversationId,
+                    sourceContent,
+                    received.Context,
+                    received.UserId,
+                    received.MessageId,
+                    received.TurnId),
+                SoftwareArchitectProfile.ConverseCapability,
+                context,
+                cancellationToken,
+                turnStream);
+            await turnStream.CompleteReasoningAsync(cancellationToken);
+            await turnStream.CommitAsync(response, cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            _logger.LogError(exception, "Software Architect failed to respond to chat turn {TurnId}.", received.TurnId);
+            await turnStream.FailAsync(
+                "The Software Architect could not complete the response. Please retry.",
+                cancellationToken);
+        }
     }
 
     private static async Task PublishConversationResponseAsync(
@@ -1006,25 +1053,11 @@ work-board mutations from conversation.
         AgentRuntimeContext context,
         CancellationToken cancellationToken)
     {
-        await context.ReportProgressAsync(
-            new AssistantResponseChunk(
-                received.ConversationId,
-                0,
-                response,
-                IsFinal: false,
-                TurnId: received.TurnId,
-                Attempt: received.Attempt),
-            cancellationToken);
-        await context.ReportProgressAsync(
-            new AssistantResponseChunk(
-                received.ConversationId,
-                1,
-                string.Empty,
-                IsFinal: true,
-                TurnId: received.TurnId,
-                Kind: "final",
-                Attempt: received.Attempt),
-            cancellationToken);
+        await using var turnStream = context.CreateTurnStream(
+            received.ConversationId,
+            received.TurnId,
+            received.Attempt);
+        await turnStream.CommitAsync(response, cancellationToken);
     }
 
     private static OrganizationPerson? FindProductOrProjectManager(

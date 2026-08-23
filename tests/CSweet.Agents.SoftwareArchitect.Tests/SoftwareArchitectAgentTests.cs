@@ -768,9 +768,10 @@ public sealed class SoftwareArchitectAgentTests
                 0,
                 messageId));
 
-        Assert.Equal(2, runtime.Progress.Count);
+        Assert.Single(runtime.Progress);
         Assert.Equal("Acknowledged.", runtime.Progress[0].GetProperty("delta").GetString());
-        Assert.True(runtime.Progress[1].GetProperty("isFinal").GetBoolean());
+        Assert.True(runtime.Progress[0].GetProperty("isFinal").GetBoolean());
+        Assert.Equal(AgentTurnStreamKinds.FinalCommit, runtime.Progress[0].GetProperty("kind").GetString());
     }
 
     [Fact]
