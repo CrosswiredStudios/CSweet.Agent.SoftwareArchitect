@@ -990,7 +990,7 @@ public sealed class SoftwareArchitectAgentTests
     }
 
     [Fact]
-    public async Task AuthenticatedProductManagerKickoffDoesNotDuplicateDurablePlanning()
+    public async Task AuthenticatedGovernedProductManagerKickoffDoesNotStartAChatModelTurn()
     {
         var organizationId = Guid.NewGuid();
         var productManagerId = Guid.NewGuid();
@@ -1003,10 +1003,12 @@ public sealed class SoftwareArchitectAgentTests
         var turnId = Guid.NewGuid();
         StartAgentCoordinationRequest? started = null;
         var kickoff = """
-<software_team_planning_kickoff>
-Board: Product Delivery
-Approved product goal: Ship the first release.
-</software_team_planning_kickoff>
+I’m starting our governed Product Delivery planning session now.
+Outcome: Ship the first release.
+I’ll own product scope, priorities, requirements, acceptance criteria, publication approval, and sprint
+activation. I created the outcome Epics in Backlog. Start by producing the complete technical design
+for exact-digest approval. After approval, propose sprint-grouped Stories and junior-ready Task pages.
+Keep all tickets in Backlog and leave dates, estimates, repository details, and assignments unset until authoritative.
 """;
         var runtime = new AgentTestRuntime()
             .RegisterCapability<object, CommunicationMessages>(

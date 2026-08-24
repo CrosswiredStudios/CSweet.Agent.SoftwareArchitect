@@ -1482,7 +1482,19 @@ work-board mutations from conversation.
         Guid senderId,
         OrganizationSnapshotResponse organization)
     {
-        if (!value.Contains("<software_team_planning_kickoff>", StringComparison.Ordinal))
+        var hasLegacyMarker = value.Contains(
+            "<software_team_planning_kickoff>",
+            StringComparison.Ordinal);
+        var hasGovernedKickoff =
+            value.StartsWith("I’m starting our governed ", StringComparison.Ordinal) &&
+            value.Contains(" planning session now.", StringComparison.Ordinal) &&
+            value.Contains(
+                "Start by producing the complete technical design",
+                StringComparison.Ordinal) &&
+            value.Contains(
+                "for exact-digest approval.",
+                StringComparison.Ordinal);
+        if (!hasLegacyMarker && !hasGovernedKickoff)
             return false;
         var sender = organization.People.SingleOrDefault(x =>
             x.Id == senderId && x.IsActive && x.AgentInstallationId.HasValue &&
