@@ -94,18 +94,250 @@ public sealed class SoftwareArchitectAgent : CSweetAgentBase
     public override async Task<PersonalTodoResult> HandlePersonalTodoAsync(
         PersonalTodoItem item, AgentRuntimeContext context, CancellationToken cancellationToken)
     {
-        if (item.Mentions.Count > 0)
+        if (item.CorrelationId is null ||
+            !(item.CorrelationId.StartsWith("architecture-planning:", StringComparison.Ordinal) ||
+              item.CorrelationId.StartsWith("architecture-refresh:", StringComparison.Ordinal) ||
+              item.CorrelationId.StartsWith("architecture-support:", StringComparison.Ordinal) ||
+              item.CorrelationId.StartsWith("architecture-escalation:", StringComparison.Ordinal)))
             return PersonalTodoResult.Blocked(
-                "The Software Architect cannot contact mentioned recipients as part of personal queue work without existing communication authority.");
-        var response = await GenerateConversationResponseAsync(
-            new AssistantCapabilityInput(
-                Settings.GetGuid("llmProviderId") ?? Guid.Empty,
-                (item.SourceConversationId ?? item.Id).ToString("D"),
-                $"Claimed architecture task: {item.Title}\n\n{item.Description}",
-                new Dictionary<string, string> { ["personalTodoItemId"] = item.Id.ToString("D") },
-                MessageId: item.SourceMessageId ?? Guid.Empty),
-            SoftwareArchitectProfile.ConverseCapability, context, cancellationToken);
-        return PersonalTodoResult.Completed(response);
+                "Unknown personal work is outside the Software Architect operating contract. Use an approved planning or work-support coordination.");
+        return PersonalTodoResult.WaitingUntil(
+            DateTimeOffset.UtcNow.AddMinutes(5),
+            "The durable architecture commitment remains open until its authoritative dependency changes.");
+    }
+
+    public override async Task HandleAttentionReviewAsync(
+        AgentAttentionReviewContext review,
+        AgentRuntimeContext context,
+        CancellationToken cancellationToken)
+    {
+        for (var attempt = 0; attempt < 2; attempt++)
+        {
+            try
+            {
+                await ReconcileAttentionAsync(review, context, cancellationToken);
+                return;
+            }
+            catch (PlatformCapabilityException exception) when (
+                exception.Code == PlatformCapabilityErrorCode.Conflict && attempt == 0)
+            {
+                // A concurrent review won the compare-and-swap. Reread every source once.
+            }
+        }
+    }
+
+    private static async Task ReconcileAttentionAsync(
+        AgentAttentionReviewContext review,
+        AgentRuntimeContext context,
+        CancellationToken cancellationToken)
+    {
+        var previous = await context.Platform.ReadOperatingStateAsync<SoftwareArchitectAssessment>(
+            SoftwareArchitectOperatingState.StateKey, cancellationToken);
+        var organization = await context.Platform.ReadOrganizationSnapshotAsync(cancellationToken);
+        var team = await context.Platform.ReadCompleteTeamRosterAsync(token: cancellationToken);
+        var boards = await context.Platform.Work.ListBoardsAsync(cancellationToken: cancellationToken);
+        var todos = await context.Platform.PersonalTodo.ListAsync(cancellationToken);
+        var coordinations = await context.Platform.Communication.ListCoordinationAsync(
+            activeOnly: true, token: cancellationToken);
+
+        var conditions = new HashSet<string>(StringComparer.Ordinal);
+        var managerAvailable = Guid.TryParse(context.Identity?.ManagerEmployeeId, out var managerId) &&
+            organization.People.Any(x => x.Id == managerId && x.IsActive);
+        if (!managerAvailable)
+            conditions.Add(SoftwareArchitectConditionCodes.ManagerUnavailable);
+        if (team is null || !Guid.TryParse(context.Identity?.EmployeeId, out var selfId) ||
+            team.Members.All(x => !Guid.TryParse(x.EmployeeId, out var id) || id != selfId))
+            conditions.Add(SoftwareArchitectConditionCodes.TeamMismatch);
+        if (boards.Count == 0)
+            conditions.Add(SoftwareArchitectConditionCodes.PlanningUnconfigured);
+
+        var blockedStages = 0;
+        var boardRevisions = new Dictionary<string, string>(StringComparer.Ordinal);
+        var sourceRevisions = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["organization"] = SoftwareArchitectOperatingState.SourceDigest(new
+            {
+                organization.OrganizationId,
+                organization.Status,
+                People = organization.People.OrderBy(x => x.Id),
+                Roles = organization.Roles.OrderBy(x => x.Id),
+                Objectives = organization.Objectives.OrderBy(x => x.Id),
+                Workstreams = organization.Workstreams.OrderBy(x => x.Id),
+                Workers = organization.Workers.OrderBy(x => x.Id),
+                Signals = organization.OperatingSignals.OrderBy(x => x.Type).ThenBy(x => x.ReferenceId),
+                organization.BudgetPosition
+            }),
+            ["team"] = team?.Revision.ToString() ?? "none"
+        };
+        foreach (var boardSummary in boards.OrderBy(x => x.Id))
+        {
+            var board = await context.Platform.Work.ReadBoardAsync(boardSummary.Id, cancellationToken);
+            var boardRevisionKey = $"board:{boardSummary.Id:N}";
+            sourceRevisions[boardRevisionKey] = board.Board.Revision.ToString();
+            boardRevisions[boardRevisionKey] = board.Board.Revision.ToString();
+            var executable = board.Items.Where(x => x.Kind is WorkItemKinds.Story or WorkItemKinds.Task).ToList();
+            if (executable.Count == 0)
+                conditions.Add(SoftwareArchitectConditionCodes.PlanningUnconfigured);
+            if (board.Items.Any(x => x.Kind == WorkItemKinds.Story) &&
+                board.Items.Where(x => x.Kind == WorkItemKinds.Story)
+                    .Any(story => board.Items.All(task => task.ParentItemId != story.Id)))
+                conditions.Add(SoftwareArchitectConditionCodes.BacklogIncomplete);
+
+            foreach (var item in executable.OrderBy(x => x.Id))
+            {
+                var commentPage = await context.Platform.Work.ReadCommentsAsync(
+                    new ReadWorkItemCommentsRequest(boardSummary.Id, item.Id), cancellationToken);
+                sourceRevisions[$"comments:{item.Id:N}"] = commentPage.SourceRevision.ToString();
+            }
+
+            var sprints = await context.Platform.Work.ListSprintsAsync(boardSummary.Id, cancellationToken);
+            sourceRevisions[$"sprints:{boardSummary.Id:N}"] = string.Join(',',
+                sprints.OrderBy(x => x.Id).Select(x => $"{x.Id:N}:{x.Revision}:{x.Status}"));
+            foreach (var sprint in sprints.Where(x =>
+                         string.Equals(x.Status, "Active", StringComparison.OrdinalIgnoreCase)))
+            {
+                var execution = await context.Platform.Work.ReadOrchestrationAsync(
+                    new ReadWorkOrchestrationRequest(boardSummary.Id, SprintId: sprint.Id), cancellationToken);
+                if (execution is null)
+                    continue;
+                sourceRevisions[$"execution:{execution.Id:N}"] = execution.Revision.ToString();
+                var stages = execution.Items.SelectMany(x => x.Stages).ToList();
+                blockedStages += stages.Count(x => x.Status is "Blocked" or "Failed");
+                if (stages.Any(x => x.Status is "Blocked" or "Failed" &&
+                                    x.StageKey.Contains("development", StringComparison.OrdinalIgnoreCase)))
+                    conditions.Add(SoftwareArchitectConditionCodes.DeveloperBlocked);
+                if (stages.Any(x =>
+                        x.StageKey.Contains("quality", StringComparison.OrdinalIgnoreCase) &&
+                        x.AttemptCount >= 2))
+                    conditions.Add(SoftwareArchitectConditionCodes.QaReworkRepeated);
+            }
+            var report = await context.Platform.Work.ReadSprintReportAsync(boardSummary.Id, cancellationToken);
+            sourceRevisions[$"report:{boardSummary.Id:N}"] =
+                SoftwareArchitectOperatingState.SourceDigest(report);
+        }
+
+        if (coordinations.Sessions.Any(x =>
+                DateTimeOffset.UtcNow - x.UpdatedAt > TimeSpan.FromHours(1)))
+            conditions.Add(SoftwareArchitectConditionCodes.CoordinationStalled);
+        var awaitingDesign = coordinations.Sessions.Any(session =>
+            session.Turns.Any(turn => turn.Artifact?.Type == IncrementalPlanningArtifactTypes.DesignProposal) &&
+            session.Turns.All(turn => turn.Artifact?.Type != IncrementalPlanningArtifactTypes.ArchitectureDecision));
+        if (awaitingDesign)
+            conditions.Add(SoftwareArchitectConditionCodes.AwaitingDesignApproval);
+        if (HasArchitectureDrift(coordinations.Sessions, boardRevisions))
+            conditions.Add(SoftwareArchitectConditionCodes.ArchitectureDrift);
+
+        var self = team?.Members.FirstOrDefault(x => x.EmployeeId == context.Identity?.EmployeeId);
+        var required = new[]
+        {
+            WorkBoardCapabilities.Read, WorkItemCapabilities.Read, WorkSprintCapabilities.Read,
+            WorkOrchestrationCapabilities.Read, CommunicationCapabilities.CoordinationRead,
+            CommunicationCapabilities.CoordinationRespond
+        };
+        if (self is not null && required.Any(x => !self.EffectiveCapabilities.Contains(x, StringComparer.Ordinal)))
+            conditions.Add(SoftwareArchitectConditionCodes.CapabilityMissing);
+        if (conditions.Count == 0)
+            conditions.Add(SoftwareArchitectConditionCodes.Healthy);
+
+        var normalized = conditions.Order(StringComparer.Ordinal).ToArray();
+        var fingerprint = SoftwareArchitectOperatingState.Fingerprint(sourceRevisions, normalized);
+        var openCorrelations = todos.Boards.SelectMany(x => x.Items)
+            .Where(x => x.Status is not (WorkStatuses.Completed or WorkStatuses.Cancelled) &&
+                        !string.IsNullOrWhiteSpace(x.CorrelationId))
+            .Select(x => x.CorrelationId!).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray();
+        var degraded = normalized.Length != 1 || normalized[0] != SoftwareArchitectConditionCodes.Healthy;
+        var assessment = new SoftwareArchitectAssessment(
+            managerAvailable ? "healthy" : "degraded",
+            normalized.Any(x => x is SoftwareArchitectConditionCodes.PlanningUnconfigured or SoftwareArchitectConditionCodes.BacklogIncomplete)
+                ? "degraded" : "healthy",
+            normalized.Any(x => x is SoftwareArchitectConditionCodes.AwaitingDesignApproval or SoftwareArchitectConditionCodes.ArchitectureDrift)
+                ? "degraded" : "healthy",
+            blockedStages > 0 ? "degraded" : "healthy",
+            normalized.Contains(SoftwareArchitectConditionCodes.CoordinationStalled) ? "degraded" : "healthy",
+            normalized, boards.Select(x => x.Id).Order().ToArray(), coordinations.Sessions.Count,
+            blockedStages, DateTimeOffset.UtcNow);
+
+        if (degraded && (previous is null || previous.DecisionFingerprint != fingerprint))
+            await EnsureAttentionCommitmentAsync(
+                todos, context, team?.TeamId ?? "unassigned", boards.FirstOrDefault()?.Id,
+                normalized, fingerprint, cancellationToken);
+
+        await context.Platform.WriteOperatingStateAsync(new WriteAgentOperatingStateRequest<SoftwareArchitectAssessment>(
+            SoftwareArchitectOperatingState.StateKey, SoftwareArchitectOperatingState.SchemaId,
+            SoftwareArchitectOperatingState.SchemaVersion, degraded ? "Degraded" : "Healthy",
+            sourceRevisions, normalized, fingerprint, openCorrelations, review.ReviewId,
+            assessment, previous?.Revision,
+            $"software-architect:assessment:{review.ReviewId:N}:{fingerprint}"), cancellationToken);
+    }
+
+    private static bool HasArchitectureDrift(
+        IReadOnlyList<AgentCoordinationSession> sessions,
+        IReadOnlyDictionary<string, string> boardRevisions)
+    {
+        foreach (var session in sessions)
+        {
+            foreach (var decisionTurn in session.Turns.Where(x =>
+                         x.Artifact?.Type == IncrementalPlanningArtifactTypes.ArchitectureDecision))
+            {
+                ProductArchitectureDecision? decision;
+                try
+                {
+                    decision = decisionTurn.Artifact!.Payload.Deserialize<ProductArchitectureDecision>(
+                        IncrementalPlanningJson.Options);
+                }
+                catch (JsonException)
+                {
+                    continue;
+                }
+                if (decision is null ||
+                    !string.Equals(decision.Decision, "approved", StringComparison.OrdinalIgnoreCase))
+                    continue;
+                var proposalArtifact = session.Turns.Select(x => x.Artifact).FirstOrDefault(x =>
+                    x?.Type == IncrementalPlanningArtifactTypes.DesignProposal &&
+                    string.Equals(x.Digest, decision.DesignDigest, StringComparison.OrdinalIgnoreCase));
+                if (proposalArtifact is null)
+                    continue;
+                SoftwareArchitectureDesignProposal? proposal;
+                try
+                {
+                    proposal = proposalArtifact.Payload.Deserialize<SoftwareArchitectureDesignProposal>(
+                        IncrementalPlanningJson.Options);
+                }
+                catch (JsonException)
+                {
+                    continue;
+                }
+                if (proposal?.SourceRevisions.Any(source =>
+                        boardRevisions.TryGetValue(source.Key, out var current) &&
+                        !string.Equals(current, source.Value, StringComparison.Ordinal)) == true)
+                    return true;
+            }
+        }
+        return false;
+    }
+
+    private static async Task EnsureAttentionCommitmentAsync(
+        PersonalTodoDirectory todos,
+        AgentRuntimeContext context,
+        string teamId,
+        Guid? boardId,
+        IReadOnlyList<string> conditions,
+        string fingerprint,
+        CancellationToken cancellationToken)
+    {
+        var correlation = conditions.Contains(SoftwareArchitectConditionCodes.DeveloperBlocked)
+            ? $"architecture-support:{boardId?.ToString("N") ?? "none"}:{fingerprint}"
+            : conditions.Contains(SoftwareArchitectConditionCodes.ArchitectureDrift) ||
+              conditions.Contains(SoftwareArchitectConditionCodes.QaReworkRepeated)
+                ? $"architecture-refresh:{boardId?.ToString("N") ?? "none"}:{fingerprint}"
+                : $"architecture-escalation:{boardId?.ToString("N") ?? "none"}:{fingerprint}";
+        if (todos.Boards.SelectMany(x => x.Items).Any(x => x.CorrelationId == correlation))
+            return;
+        await context.Platform.PersonalTodo.AddAsync(new AddPersonalTodoItemRequest(
+            "Reconcile software architecture health",
+            $"Authoritative conditions: {string.Join(", ", conditions)}. Team: {teamId}.",
+            WorkPriorities.High, null, correlation, CorrelationId: correlation)
+        { StartInBacklog = true }, cancellationToken);
     }
 
     public override async Task HandleEventAsync(
@@ -131,6 +363,31 @@ public sealed class SoftwareArchitectAgent : CSweetAgentBase
     {
         cancellationToken.ThrowIfCancellationRequested();
         var latest = request.Transcript.OrderByDescending(x => x.Ordinal).FirstOrDefault();
+        if (string.Equals(request.SourceKind, "WorkItem", StringComparison.Ordinal) &&
+            request.WorkSource is { } workSource)
+        {
+            if (latest?.Artifact is not { } supportArtifact ||
+                !string.Equals(supportArtifact.Type, IncrementalPlanningArtifactTypes.SupportRequest, StringComparison.Ordinal))
+                return AgentCoordinationTurnResult.Blocked(
+                    "Work-sourced Architect support requires software-development.support-request.v1.");
+            var support = supportArtifact.Payload.Deserialize<SoftwareDevelopmentSupportRequest>(IncrementalPlanningJson.Options)
+                ?? throw new ArchitectureDesignException("The Developer support request is empty.");
+            if (support.AssignmentRevision != workSource.AssignmentRevision)
+                return AgentCoordinationTurnResult.Blocked(
+                    "The support request assignment revision is stale.");
+            var guidance = await new ArchitectureSupportHarness(_llmClientFactory).GenerateAsync(
+                workSource, support, context, Settings, cancellationToken);
+            var submission = new AgentCoordinationArtifactSubmission(
+                IncrementalPlanningArtifactTypes.Guidance, "1.0",
+                $"support:{workSource.ItemId:N}:{workSource.StageExecutionId:N}:{workSource.AssignmentRevision}",
+                0, true, JsonSerializer.SerializeToElement(guidance, IncrementalPlanningJson.Options));
+            return guidance.RequiresArchitectureApproval
+                ? AgentCoordinationTurnResult.Blocked(
+                    $"The safe resolution changes approved architecture or product constraints: {guidance.ApprovalReason}", submission)
+                : AgentCoordinationTurnResult.Completed(
+                    "Technical guidance is complete and pinned to the current assignment. The Developer may request the governed retry after consuming it.",
+                    submission);
+        }
         if (request.IsFinalization)
         {
             var outcome = latest?.Disposition == AgentCoordinationDispositions.Blocked
@@ -143,33 +400,95 @@ Confirmed actions: the Product Manager owns the requirements, acceptance criteri
 """);
         }
 
+        if (latest?.Artifact is { } decisionArtifact &&
+            string.Equals(decisionArtifact.Type, IncrementalPlanningArtifactTypes.ArchitectureDecision, StringComparison.Ordinal))
+        {
+            var decision = decisionArtifact.Payload.Deserialize<ProductArchitectureDecision>(IncrementalPlanningJson.Options)
+                ?? throw new ArchitectureDesignException("The architecture decision artifact is empty.");
+            var designTurn = request.Transcript.OrderByDescending(x => x.Ordinal).FirstOrDefault(x =>
+                x.Artifact?.Type == IncrementalPlanningArtifactTypes.DesignProposal);
+            if (designTurn?.Artifact is null ||
+                !string.Equals(designTurn.Artifact.Digest, decision.DesignDigest, StringComparison.OrdinalIgnoreCase))
+                return AgentCoordinationTurnResult.Blocked(
+                    "The Product Manager decision does not reference the exact design digest.");
+            if (string.Equals(decision.Decision, "approved", StringComparison.OrdinalIgnoreCase))
+                return AgentCoordinationTurnResult.Continue(
+                    "The exact architecture digest is approved. Send the first product-management.architecture-brief.v2 Story stage referencing that digest.");
+            if (string.Equals(decision.Decision, "rejected", StringComparison.OrdinalIgnoreCase))
+                return AgentCoordinationTurnResult.Blocked($"The architecture design was rejected: {decision.Rationale}");
+            if (decision.Revision >= 3)
+                return AgentCoordinationTurnResult.Blocked(
+                    $"Three bounded design revisions were exhausted. Focused manager decision required: {decision.Rationale}");
+            var briefTurn = request.Transcript.OrderByDescending(x => x.Ordinal).FirstOrDefault(x =>
+                x.Artifact?.Type == IncrementalPlanningArtifactTypes.ArchitectureBrief);
+            var prior = briefTurn?.Artifact?.Payload.Deserialize<IncrementalProductBrief>(IncrementalPlanningJson.Options)
+                ?? throw new ArchitectureDesignException("The persisted architecture brief is unavailable for revision.");
+            return await ProposeDesignAsync(
+                prior with
+                {
+                    Constraints = prior.Constraints.Append($"PM revision request: {decision.Rationale}").ToArray(),
+                    DesignRevision = decision.Revision + 1
+                }, context, cancellationToken);
+        }
+
         if (latest?.Artifact is not { } artifact ||
-            !string.Equals(artifact.Type, IncrementalPlanningArtifactTypes.ProductBrief, StringComparison.Ordinal))
+            !(string.Equals(artifact.Type, IncrementalPlanningArtifactTypes.ProductBrief, StringComparison.Ordinal) ||
+              string.Equals(artifact.Type, IncrementalPlanningArtifactTypes.ArchitectureBrief, StringComparison.Ordinal)))
         {
             return AgentCoordinationTurnResult.Continue(
-                "Please send the current Epic or Story as a structured product-management.brief.v1 artifact; legacy text alone is not a completed planning stage.");
+                "Please send the current approved scope as product-management.architecture-brief.v2; legacy text alone is not a completed planning stage.");
         }
 
         var brief = artifact.Payload.Deserialize<IncrementalProductBrief>(IncrementalPlanningJson.Options)
             ?? throw new ArchitectureDesignException("The incremental product brief artifact is empty.");
         var harness = new IncrementalArchitectureHarness(_llmClientFactory);
+        if (string.Equals(brief.Stage, "design", StringComparison.OrdinalIgnoreCase))
+            return await ProposeDesignAsync(brief, context, cancellationToken);
         if (string.Equals(brief.Stage, "stories", StringComparison.OrdinalIgnoreCase))
         {
+            if (string.IsNullOrWhiteSpace(brief.ApprovedDesignDigest))
+                return AgentCoordinationTurnResult.Blocked(
+                    "Story planning requires the exact approved architecture digest.");
             var proposal = await harness.ProposeStoriesAsync(brief, context, Settings, cancellationToken);
+            proposal = proposal with
+            {
+                ApprovedDesignDigest = brief.ApprovedDesignDigest,
+                SourceRevisions = brief.SourceRevisions
+            };
             return AgentCoordinationTurnResult.Continue(
                 $"Proposed {proposal.Stories.Count} Story ticket(s) for {brief.Epic.Title}; please approve the scope and planned sprint grouping.",
                 new AgentCoordinationArtifactSubmission(
-                    IncrementalPlanningArtifactTypes.StoryProposal, "1.0", $"{brief.PlanKey}:{brief.Epic.Key}:stories",
+                    IncrementalPlanningArtifactTypes.StoryProposalV2, "2.0", $"{brief.PlanKey}:{brief.Epic.Key}:stories",
                     0, true, JsonSerializer.SerializeToElement(proposal, IncrementalPlanningJson.Options)));
         }
 
         if (string.Equals(brief.Stage, "tasks", StringComparison.OrdinalIgnoreCase))
         {
+            if (string.IsNullOrWhiteSpace(brief.ApprovedDesignDigest))
+                return AgentCoordinationTurnResult.Blocked(
+                    "Task planning requires the exact approved architecture digest.");
             var proposal = await harness.ProposeTasksAsync(brief, context, Settings, cancellationToken);
+            proposal = proposal with
+            {
+                ApprovedDesignDigest = brief.ApprovedDesignDigest,
+                SourceRevisions = brief.SourceRevisions,
+                Tasks = proposal.Tasks.Select(task => task.DelegationRecommendations.Count > 0
+                    ? task
+                    : task with
+                    {
+                        DelegationRecommendations =
+                        [
+                            new("development", "software-developer", ["work.execution.run.v1"],
+                                null, false, "Implementation requires an eligible software Developer."),
+                            new("quality", "software-qa", ["work.execution.run.v1"],
+                                null, false, "Independent verification requires eligible QA capacity.")
+                        ]
+                    }).ToArray()
+            };
             return AgentCoordinationTurnResult.Continue(
                 $"Prepared Task page {proposal.PageOrdinal + 1} for {brief.Story!.Title}: {proposal.Tasks.Count} junior-ready Task ticket(s).",
                 new AgentCoordinationArtifactSubmission(
-                    IncrementalPlanningArtifactTypes.TaskProposal, "1.0",
+                    IncrementalPlanningArtifactTypes.TaskProposalV2, "2.0",
                     $"{brief.PlanKey}:{brief.Story.Key}:tasks", proposal.PageOrdinal,
                     proposal.IsFinalPage, JsonSerializer.SerializeToElement(proposal, IncrementalPlanningJson.Options)));
         }
@@ -182,6 +501,44 @@ Confirmed actions: the Product Manager owns the requirements, acceptance criteri
             new AgentCoordinationArtifactSubmission(
                 IncrementalPlanningArtifactTypes.Question, "1.0", $"{brief.PlanKey}:question",
                 0, true, JsonSerializer.SerializeToElement(question, IncrementalPlanningJson.Options)));
+    }
+
+    private async Task<AgentCoordinationTurnResult> ProposeDesignAsync(
+        IncrementalProductBrief brief,
+        AgentRuntimeContext context,
+        CancellationToken cancellationToken)
+    {
+        var roster = await context.Platform.ReadTeamRosterAsync(token: cancellationToken);
+        var deliveryProfile = ArchitecturePlanPolicy.BuildDeliveryProfile(
+            roster, null, Settings.GetInt32(
+                "defaultSprintLengthDays", SoftwareArchitectProfile.DefaultSprintLengthDays));
+        var designRequest = new ArchitectureDesignRequest(
+            brief.BoardId, brief.ProductGoal, brief.Requirements, brief.AcceptanceCriteria,
+            $"{brief.PlanKey}:design:{brief.DesignRevision}", brief.Constraints, brief.NonGoals,
+            SourceConversationId: null)
+        {
+            OutcomeHierarchyRequired = true,
+            RollingRefinement = brief.DesignRevision > 0
+        };
+        var plan = await _designGenerator.GenerateAsync(
+            designRequest, deliveryProfile, context, Settings, cancellationToken);
+        var validation = ArchitecturePlanPolicy.ValidatePlan(
+            plan, false, deliveryProfile, true, designRequest.RollingRefinement);
+        if (validation is not null)
+            return AgentCoordinationTurnResult.Blocked(validation);
+        var proposal = new SoftwareArchitectureDesignProposal(
+            brief.PlanKey, brief.BoardId, brief.DesignRevision, plan,
+            [
+                $"Defines {plan.Components.Count} component boundary or boundaries.",
+                $"Records {plan.Decisions.Count} technical decision(s) and {plan.Risks.Count} risk(s).",
+                $"Traces {plan.RequirementTraceability.Count} approved requirement(s)."
+            ], brief.SourceRevisions);
+        return AgentCoordinationTurnResult.Continue(
+            "The complete technical design is ready. Approve this exact digest or request one bounded revision; no sprint scope has been committed.",
+            new AgentCoordinationArtifactSubmission(
+                IncrementalPlanningArtifactTypes.DesignProposal, "1.0",
+                $"{brief.PlanKey}:design", brief.DesignRevision, true,
+                JsonSerializer.SerializeToElement(proposal, IncrementalPlanningJson.Options)));
     }
 
     protected override async Task<AgentWorkResult> ExecuteCapabilityCoreAsync(
@@ -258,7 +615,9 @@ Confirmed actions: the Product Manager owns the requirements, acceptance criteri
                     .Append($"Definition of done: {task.DefinitionOfDone}")
                     .ToArray())
             {
-                DependencyItemIds = dependencies
+                DependencyItemIds = dependencies,
+                DelegationRecommendations = task.DelegationRecommendations,
+                ArchitectureArtifactDigest = input.Proposal.ApprovedDesignDigest
             };
             var item = await context.Platform.Work.CreateItemAsync(
                 new CreateWorkItemRequest(
@@ -581,7 +940,8 @@ No migration is required unless the implementation changes persisted data or a p
                 {
                     DependencyItemIds = ticketPlan.Dependencies
                         .Select(key => itemIds[key])
-                        .ToArray()
+                        .ToArray(),
+                    ArchitectureArtifactDigest = input.Design!.PlanHash
                 };
                 var parentItemId = hierarchical
                     ? ticketPlan.Kind == WorkItemKinds.Story
@@ -988,18 +1348,10 @@ work-board mutations from conversation.
 
         var sourceContent = sourceMessage.Content;
         if (IsAcknowledgement(sourceContent))
-        {
-            await PublishConversationResponseAsync(
-                received, "Acknowledged.", context, cancellationToken);
             return;
-        }
 
         if (IsProductManagerKickoff(sourceContent, senderId, organization))
-        {
-            await PublishConversationResponseAsync(
-                received, "Acknowledged.", context, cancellationToken);
             return;
-        }
 
         if (IsProductManagerCollaborationRequest(sourceContent))
         {
@@ -1101,7 +1453,16 @@ work-board mutations from conversation.
             return false;
         if (Guid.TryParse(identity?.ManagerEmployeeId, out var managerId) && managerId == senderId)
             return true;
-        return true;
+        if (sender.DisplayName.Equals("CEO", StringComparison.OrdinalIgnoreCase))
+            return true;
+        if (sender.RoleId is not { } roleId)
+            return false;
+        var role = organization.Roles.SingleOrDefault(x => x.Id == roleId)?.Name;
+        return role?.Contains("Product Manager", StringComparison.OrdinalIgnoreCase) == true ||
+               role?.Contains("Manager", StringComparison.OrdinalIgnoreCase) == true ||
+               role?.Contains("Chief", StringComparison.OrdinalIgnoreCase) == true ||
+               role?.Contains("CEO", StringComparison.OrdinalIgnoreCase) == true ||
+               role?.Contains("Executive", StringComparison.OrdinalIgnoreCase) == true;
     }
 
     private static OrganizationPerson? FindActiveProductManager(OrganizationSnapshotResponse organization)

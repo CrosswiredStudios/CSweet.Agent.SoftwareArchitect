@@ -2,9 +2,13 @@
   "$schema": "https://raw.githubusercontent.com/CrosswiredStudios/CSweetAgentSdk/main/schemas/csweet-plugin.v2.schema.json",
   "manifestVersion": "2.0",
   "kind": "agent",
+  "rolePolicy": {
+    "profile": "individual-contributor.v1",
+    "declaredRoleKeys": ["software-architect"]
+  },
   "id": "com.csweet.software-architect",
   "name": "C-Sweet Software Architect",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "publisher": {
     "id": "com.csweet",
     "name": "C-Sweet"
@@ -895,6 +899,12 @@
     }
   ],
   "requires": [
+    { "name": "platform.agent-operating-state.read.v1", "scope": "organization", "purpose": "Read the prior typed Architect assessment", "modelVisible": false },
+    { "name": "platform.agent-operating-state.write.v1", "scope": "organization", "purpose": "Persist the typed Architect assessment with optimistic concurrency", "modelVisible": false },
+    { "name": "memory.business.read.v1", "scope": "organization", "purpose": "Recall approved durable business context" },
+    { "name": "memory.business.propose.v1", "scope": "organization", "purpose": "Propose durable architecture preferences without storing workflow truth", "modelVisible": false },
+    { "name": "memory.user.read.v1", "scope": "organization", "purpose": "Recall durable manager preferences" },
+    { "name": "memory.user.propose.v1", "scope": "organization", "purpose": "Propose durable manager preferences", "modelVisible": false },
     { "name": "work.personal-todo.read.v1", "scope": "organization", "purpose": "Read resource-scoped personal queues" },
     { "name": "work.personal-todo.add.v1", "scope": "organization", "purpose": "Add self or direct-report personal work" },
     { "name": "work.personal-todo.reorder.v1", "scope": "organization", "purpose": "Reorder directly managed personal work" },
@@ -944,6 +954,18 @@
       "purpose": "Submit one structured architecture collaboration disposition"
     },
     {
+      "name": "communication.coordination.start-work.v1",
+      "scope": "team",
+      "purpose": "Start bounded work-item technical support with the exact assigned Developer",
+      "modelVisible": false
+    },
+    {
+      "name": "communication.coordination.list.v1",
+      "scope": "team",
+      "purpose": "Reconcile open and stalled architecture coordination",
+      "modelVisible": false
+    },
+    {
       "name": "communication.coordination.read.v1",
       "scope": "team",
       "purpose": "Read a collaboration session in which this Architect participates"
@@ -967,6 +989,17 @@
       "name": "work.item.read",
       "scope": "board",
       "purpose": "Read existing work to avoid duplicate or conflicting architecture plans"
+    },
+    {
+      "name": "work.item.comments.read",
+      "scope": "work-item",
+      "purpose": "Read linked design and Developer guidance comments"
+    },
+    {
+      "name": "work.item.comment",
+      "scope": "work-item",
+      "purpose": "Link bounded architecture guidance to the authoritative work item",
+      "modelVisible": false
     },
     {
       "name": "work.item.create",
@@ -1009,6 +1042,17 @@
       "purpose": "Use historical sprint evidence without inventing velocity or capacity"
     },
     {
+      "name": "work.orchestration.read",
+      "scope": "board",
+      "purpose": "Read authoritative sprint and stage execution state"
+    },
+    {
+      "name": "work.orchestration.retry",
+      "scope": "work-item",
+      "purpose": "Request an exact governed retry when acting as the assigned counterpart",
+      "modelVisible": false
+    },
+    {
       "name": "git.merge.review.v2",
       "scope": "work-item",
       "purpose": "Review the exact candidate SHA and QA evidence when this Architect is the canonical team lead"
@@ -1031,6 +1075,7 @@
       "com.csweet.agent.onboarded.v1",
       "com.csweet.user.message.received.v1",
       "com.csweet.agent.coordination.turn-requested.v1"
+      ,"com.csweet.agent.attention.review-due.v1"
     ]
   },
   "configuration": [

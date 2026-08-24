@@ -7,6 +7,73 @@ namespace CSweet.Agents.SoftwareArchitect.Tests;
 public sealed class SoftwareArchitectAgentTests
 {
     [Fact]
+    public async Task WorkSupport_FailsClosedBeforeModelWhenAssignmentRevisionIsStale()
+    {
+        var developer = new AgentCoordinationParticipant(
+            Guid.NewGuid(), Guid.NewGuid(), "Developer", "Software Developer");
+        var architect = new AgentCoordinationParticipant(
+            Guid.NewGuid(), Guid.NewGuid(), "Architect", "Software Architect");
+        var source = new AgentCoordinationWorkSource(
+            Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), 8);
+        var support = new SoftwareDevelopmentSupportRequest(
+            "technical-implementation", ["Compiler error"], ["Built the project"],
+            ["Build failed"], "Which invariant applies?", 7);
+        var artifact = new AgentCoordinationArtifact(
+            IncrementalPlanningArtifactTypes.SupportRequest, "1.0", "support", 0, true,
+            JsonSerializer.SerializeToElement(support), new string('a', 64));
+        var request = new AgentCoordinationTurnRequest(
+            Guid.NewGuid(), 1, 1, "Technical blocker", "Resolve blocker", ["Retry is safe"],
+            architect, developer, false,
+            [new AgentCoordinationTurn(Guid.NewGuid(), 0, developer.OrganizationUserId,
+                AgentCoordinationDispositions.Continue, "Please advise.", DateTimeOffset.UtcNow, artifact)])
+        {
+            SourceKind = "WorkItem",
+            WorkSource = source,
+            MaximumTurns = 6
+        };
+
+        var result = await new SoftwareArchitectAgent().HandleCoordinationTurnAsync(
+            request, new AgentTestRuntime().CreateContext(), CancellationToken.None);
+
+        Assert.Equal(AgentCoordinationDispositions.Blocked, result.Disposition);
+        Assert.Contains("stale", result.Content, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task DesignDecision_MustReferenceExactPlatformArtifactDigest()
+    {
+        var pm = new AgentCoordinationParticipant(
+            Guid.NewGuid(), Guid.NewGuid(), "Product Manager", "Software Product Manager");
+        var architect = new AgentCoordinationParticipant(
+            Guid.NewGuid(), Guid.NewGuid(), "Architect", "Software Architect");
+        var designDigest = new string('b', 64);
+        var designArtifact = new AgentCoordinationArtifact(
+            IncrementalPlanningArtifactTypes.DesignProposal, "1.0", "plan:design", 0, true,
+            JsonSerializer.SerializeToElement(new { }), designDigest);
+        var decision = new ProductArchitectureDecision(
+            "plan", new string('c', 64), "approved", "Approved.", 0);
+        var decisionArtifact = new AgentCoordinationArtifact(
+            IncrementalPlanningArtifactTypes.ArchitectureDecision, "1.0", "plan:decision", 0, true,
+            JsonSerializer.SerializeToElement(decision), new string('d', 64));
+        var now = DateTimeOffset.UtcNow;
+        var request = new AgentCoordinationTurnRequest(
+            Guid.NewGuid(), 2, 2, "Design", "Approve design", ["Exact digest"],
+            architect, pm, false,
+            [
+                new AgentCoordinationTurn(Guid.NewGuid(), 0, architect.OrganizationUserId,
+                    AgentCoordinationDispositions.Continue, "Design", now, designArtifact),
+                new AgentCoordinationTurn(Guid.NewGuid(), 1, pm.OrganizationUserId,
+                    AgentCoordinationDispositions.Continue, "Approved", now, decisionArtifact)
+            ]);
+
+        var result = await new SoftwareArchitectAgent().HandleCoordinationTurnAsync(
+            request, new AgentTestRuntime().CreateContext(), CancellationToken.None);
+
+        Assert.Equal(AgentCoordinationDispositions.Blocked, result.Disposition);
+        Assert.Contains("exact design digest", result.Content, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task Design_ReturnsValidatedTypedPlanAndProgress()
     {
         var agent = new SoftwareArchitectAgent(new StubDesignGenerator(
@@ -732,7 +799,7 @@ public sealed class SoftwareArchitectAgentTests
     }
 
     [Fact]
-    public async Task UnknownEventIsIgnoredAndAcknowledgementDoesNotStartConversationLoop()
+    public async Task UnknownEventIsIgnoredAndExecutiveAcknowledgementDoesNotLoop()
     {
         var agent = new SoftwareArchitectAgent();
         var conversationId = Guid.NewGuid();
@@ -768,10 +835,7 @@ public sealed class SoftwareArchitectAgentTests
                 0,
                 messageId));
 
-        Assert.Single(runtime.Progress);
-        Assert.Equal("Acknowledged.", runtime.Progress[0].GetProperty("delta").GetString());
-        Assert.True(runtime.Progress[0].GetProperty("isFinal").GetBoolean());
-        Assert.Equal(AgentTurnStreamKinds.FinalCommit, runtime.Progress[0].GetProperty("kind").GetString());
+        Assert.Empty(runtime.Progress);
     }
 
     [Fact]
@@ -926,7 +990,7 @@ public sealed class SoftwareArchitectAgentTests
     }
 
     [Fact]
-    public async Task AuthenticatedProductManagerKickoffStartsDurableReleasePlanning()
+    public async Task AuthenticatedProductManagerKickoffDoesNotDuplicateDurablePlanning()
     {
         var organizationId = Guid.NewGuid();
         var productManagerId = Guid.NewGuid();
@@ -987,7 +1051,7 @@ Approved product goal: Ship the first release.
                 kickoff, null, turnId, 0, messageId));
 
         Assert.Null(started);
-        Assert.Equal("Acknowledged.", runtime.Progress[0].GetProperty("delta").GetString());
+        Assert.Empty(runtime.Progress);
     }
 
     [Fact]

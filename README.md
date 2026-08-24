@@ -1,7 +1,7 @@
 # C-Sweet Software Architect
 
-First-party C-Sweet Software Architect agent, version `0.9.0`, built on .NET 10,
-`CSweet.Agent.SDK` 3.13.0, Microsoft Agent Framework Harness 1.15.0, and manifest protocol v2.
+First-party C-Sweet Software Architect agent, version `0.10.0`, built on .NET 10,
+`CSweet.Agent.SDK` 3.16.0, Microsoft Agent Framework Harness 1.15.0, and manifest protocol v2.
 
 The agent converts approved product requirements into maintainable system designs, incremental
 sprint plans, and developer-ready tickets. Product and Project Managers retain ownership of
@@ -42,6 +42,24 @@ The agent never starts or completes sprints, selects staff or repositories, manu
 work, writes code, merges, deploys, or publishes releases. Approved publication only binds each
 ticket's Development and QA stages to the Product Manager-authorized active assignment pools.
 
+## Continuous operation
+
+The reference workflow now uses the `individual-contributor.v1` policy profile and the
+`software-architect` role key. Startup, recovery, periodic, and state-change attention all run the
+same deterministic reconciliation. A typed `software-architect.assessment` checkpoint records the
+prior assessment and durable commitment correlations; boards, rosters, orchestration, and
+coordination are always reread as authoritative state. Unchanged reviews do not invoke the model.
+
+Incremental PM collaboration is design-first: architecture brief v2, complete design proposal,
+approval of the exact design digest, sprint-grouped Story proposals, and paged junior-ready Task
+proposals with role/capability delegation recommendations. The PM retains product approval,
+repository selection, exact assignment, preflight, and sprint lifecycle authority.
+
+Assigned Developers can open a work-item-scoped technical-support session. The Architect validates
+the immutable stage assignment and approved design, returns bounded typed guidance, and requests PM
+approval when the safe answer would change architecture, scope, budget, timing, or accepted risk.
+Technical-support sessions have a six-turn platform limit and explicit completed or blocked outcomes.
+
 ## Conversations
 
 On onboarding, the agent finds its accountable Product or Project Manager from the authoritative
@@ -70,4 +88,7 @@ dotnet run --project src/CSweet.Agents.SoftwareArchitect -- --self-test
 ```
 
 The tests require no C-Sweet instance, provider credential, repository connection, or network
-access after restore. See [GRANTS.md](GRANTS.md) for the reviewed authority request.
+access after restore. The configured-provider evaluation matrix is defined in
+[`evals/software-architect-lifecycle.v1.json`](evals/software-architect-lifecycle.v1.json) and must
+run against every supported configured model profile before release. See [GRANTS.md](GRANTS.md) for
+the reviewed authority request.

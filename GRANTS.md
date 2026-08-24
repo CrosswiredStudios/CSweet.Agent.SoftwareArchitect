@@ -1,6 +1,6 @@
 # Software Architect grants
 
-This document describes the minimum authority requested by package version `0.9.0`.
+This document describes the minimum authority requested by package version `0.10.0`.
 
 The Product Manager starts durable collaboration. The Architect advances it with
 `communication.coordination.respond.v1`, `communication.coordination.read.v1`, and
@@ -16,18 +16,26 @@ authoritative.
 - `platform.organization.snapshot.read.v1` reads current objectives, workstreams, roles, and
   reporting lines.
 - `platform.team-roster.read.v1` finds the bounded accountable Product or Project Manager.
+- `platform.agent-operating-state.read.v1` and `platform.agent-operating-state.write.v1` persist a
+  typed prior assessment with optimistic concurrency; they do not replace authoritative sources.
+- Governed business/user memory recall and proposal capabilities preserve durable preferences only.
 
 ## Conversation and lifecycle
 
 - `communication.chat.read.v1` verifies the source conversation and addressed sender.
 - `communication.chat.create.v1` opens or reuses a private manager conversation.
 - `communication.message.send.v1` sends idempotent clarifications and status.
+- `communication.coordination.start-work.v1` and coordination list/read/respond/cancel capabilities
+  support assignment-pinned Developer guidance and bounded PM planning.
 - `agent.onboarding.complete.v1` acknowledges the exact durable onboarding event.
 
 ## Work management
 
 - `work.board.read`, `work.item.read`, `work.sprint.read`, and `work.sprint.report.read` provide
   design context.
+- `work.item.comments.read` and `work.orchestration.read.v1` ground support in linked comments and
+  the exact execution snapshot. Governed retry is requested only for that blocked snapshot and is
+  never exposed to the model.
 - `work.item.create` and `work.item.estimate` publish planning drafts; `work.item.delivery.finalize` attaches approved executable delivery details, and `work.item.move` promotes only dependency-ready first-sprint work.
 - `work.sprint.create` and `work.sprint.scope.manage` publish planned increments.
 

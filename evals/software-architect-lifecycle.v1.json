@@ -1,0 +1,72 @@
+{
+  "schemaVersion": "1.0",
+  "suite": "software-architect.lifecycle.v1",
+  "modelSelection": "all-supported-configured-model-profiles",
+  "scenarios": [
+    {
+      "key": "design-quality",
+      "invocationKind": "architecture-design",
+      "requiresModel": true,
+      "criteria": ["requirement-traceability", "explicit-boundaries-and-interfaces", "quality-attributes", "failure-rollout-and-rollback"]
+    },
+    {
+      "key": "tradeoff-explanation",
+      "invocationKind": "architecture-design",
+      "requiresModel": true,
+      "criteria": ["alternatives-compared", "consequences-explicit", "pm-readable-impact-summary", "no-product-authority-expansion"]
+    },
+    {
+      "key": "junior-ready-decomposition",
+      "invocationKind": "incremental-planning",
+      "requiresModel": true,
+      "criteria": ["approved-design-digest-preserved", "stories-grouped-by-sprint", "tasks-actionable-and-verifiable", "delegation-is-role-and-capability-only"]
+    },
+    {
+      "key": "architecture-revision",
+      "invocationKind": "architecture-design",
+      "requiresModel": true,
+      "criteria": ["requested-change-addressed", "unchanged-decisions-preserved", "new-digest-produced", "three-revision-limit-respected"]
+    },
+    {
+      "key": "developer-guidance",
+      "invocationKind": "developer-guidance",
+      "requiresModel": true,
+      "criteria": ["diagnosis-grounded-in-linked-work", "ordered-next-steps", "invariants-preserved", "verification-and-residual-risks"]
+    },
+    {
+      "key": "scope-change-detection",
+      "invocationKind": "developer-guidance",
+      "requiresModel": true,
+      "criteria": ["architecture-or-scope-change-detected", "support-session-blocked", "pm-approval-requested", "no-unapproved-retry"]
+    },
+    {
+      "key": "escalation-quality",
+      "invocationKind": "conversation",
+      "requiresModel": true,
+      "criteria": ["material-condition-only", "decision-owner-explicit", "technical-impact-clear", "immediate-action-explicit"]
+    }
+  ],
+  "deterministicScenarios": [
+    "unchanged-healthy-zero-model-calls",
+    "unchanged-degraded-no-duplicate-commitment",
+    "operating-state-conflict-rereads-authoritative-state",
+    "stale-support-assignment-fails-closed",
+    "second-qa-rework-wakes-architect",
+    "six-turn-support-limit-blocks-loop"
+  ],
+  "crossAgentLifecycle": {
+    "key": "pm-architect-developer-qa-recovery",
+    "sequence": [
+      "pm-architecture-brief-v2",
+      "architect-design-proposal-v1",
+      "pm-exact-digest-approval-v1",
+      "architect-story-and-task-proposals-v2",
+      "pm-persists-finalizes-and-starts-earliest-sprint",
+      "developer-support-request-v1",
+      "architect-guidance-v1",
+      "developer-exact-stage-retry",
+      "qa-completion"
+    ],
+    "criteria": ["authoritative-digests-linked", "exact-assignments-preserved", "bounded-coordination", "orchestrator-owns-transitions"]
+  }
+}

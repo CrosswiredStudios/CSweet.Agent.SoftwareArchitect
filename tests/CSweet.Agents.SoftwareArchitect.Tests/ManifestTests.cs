@@ -26,6 +26,10 @@ public sealed class ManifestTests
         Assert.Equal("AlwaysOn", manifest.Runtime.DefaultActivationMode);
         Assert.Equal(1, manifest.Runtime.MaximumConcurrentJobs);
         using var document = JsonDocument.Parse(await File.ReadAllTextAsync(path));
+        Assert.Equal("individual-contributor.v1",
+            document.RootElement.GetProperty("rolePolicy").GetProperty("profile").GetString());
+        Assert.Equal("software-architect",
+            document.RootElement.GetProperty("rolePolicy").GetProperty("declaredRoleKeys")[0].GetString());
         var configuration = document.RootElement.GetProperty("configuration").EnumerateArray().ToArray();
         Assert.Equal(
             SoftwareArchitectProfile.DefaultContextWindowTokens,
@@ -59,6 +63,12 @@ public sealed class ManifestTests
 
         Assert.Equal(
             [
+                PlatformCapabilities.AgentOperatingStateRead,
+                PlatformCapabilities.AgentOperatingStateWrite,
+                MemoryCapabilities.BusinessRead,
+                MemoryCapabilities.BusinessPropose,
+                MemoryCapabilities.UserRead,
+                MemoryCapabilities.UserPropose,
                 PersonalTodoCapabilities.Read,
                 PersonalTodoCapabilities.Add,
                 PersonalTodoCapabilities.Reorder,
@@ -75,11 +85,15 @@ public sealed class ManifestTests
                 CommunicationCapabilities.ChatCreate,
                 CommunicationCapabilities.MessageSend,
                 CommunicationCapabilities.CoordinationRespond,
+                CommunicationCapabilities.CoordinationStartWork,
+                CommunicationCapabilities.CoordinationList,
                 CommunicationCapabilities.CoordinationRead,
                 CommunicationCapabilities.CoordinationCancel,
                 AgentLifecycleCapabilities.CompleteOnboarding,
                 WorkBoardCapabilities.Read,
                 WorkItemCapabilities.Read,
+                WorkItemCapabilities.ReadComments,
+                WorkItemCapabilities.Comment,
                 WorkItemCapabilities.Create,
                 WorkItemCapabilities.FinalizeDelivery,
                 WorkItemCapabilities.Estimate,
@@ -88,6 +102,8 @@ public sealed class ManifestTests
                 WorkSprintCapabilities.Create,
                 WorkSprintCapabilities.ManageScope,
                 WorkSprintCapabilities.ReadReports,
+                WorkOrchestrationCapabilities.Read,
+                WorkOrchestrationCapabilities.Retry,
                 GitMergeCapabilities.Review,
                 GitMergeCapabilities.Authorize,
                 SourceControlCapabilities.ProvisionRepository
@@ -100,7 +116,7 @@ public sealed class ManifestTests
         Assert.Equal(
             [PersonalTodoEvents.Available, CommunicationEvents.MessageMentioned,
                 AgentLifecycleEvents.Onboarded, CommunicationEvents.MessageReceived,
-                AgentCoordinationEvents.TurnRequested],
+                AgentCoordinationEvents.TurnRequested, AgentAttentionEvents.ReviewDue],
             root.GetProperty("events").GetProperty("subscribes")
                 .EnumerateArray().Select(x => x.GetString()!).ToArray());
         Assert.DoesNotContain(GitWorkspaceCapabilities.Prepare, required);
