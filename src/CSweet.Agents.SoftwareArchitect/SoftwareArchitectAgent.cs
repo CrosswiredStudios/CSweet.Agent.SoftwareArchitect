@@ -1171,7 +1171,7 @@ No migration is required unless the implementation changes persisted data or a p
         {
             var employeeIds = roster.Team.Members
                 .Where(x => !x.Presence.Equals("Inactive", StringComparison.OrdinalIgnoreCase) &&
-                            NormalizeRole(x.TeamRole ?? x.CompanyRole ?? string.Empty) == NormalizeRole(role))
+                            x.DeclaredRoleKeys.Contains(role, StringComparer.Ordinal))
                 .Select(x => Guid.TryParse(x.EmployeeId, out var id) ? id : Guid.Empty)
                 .Where(x => x != Guid.Empty)
                 .ToHashSet();
@@ -1191,13 +1191,13 @@ No migration is required unless the implementation changes persisted data or a p
                 .ToHashSet();
         }
 
-        var architects = AssignmentsFor("Software Architect")
+        var architects = AssignmentsFor("software-architect")
             .Where(x => x.PrincipalKind == WorkOrchestrationPrincipalKinds.AgentInstallation)
             .ToHashSet();
         if (architects.Count != 1)
             return "The approved team must have exactly one designated active Software Architect.";
-        var allowedDevelopers = AssignmentsFor("Software Developer");
-        var allowedQuality = AssignmentsFor("Software QA");
+        var allowedDevelopers = AssignmentsFor("software-developer");
+        var allowedQuality = AssignmentsFor("software-qa");
         var developers = ArchitecturePlanPolicy.NormalizeAssignmentPool(
             request.DeveloperAssignments, request.DeveloperInstallationIds, request.DeveloperInstallationId);
         var quality = ArchitecturePlanPolicy.NormalizeAssignmentPool(
@@ -1533,7 +1533,8 @@ work-board mutations from conversation.
         }
 
         var teammateIds = roster.Team?.Members
-            .Where(x => IsPlanningRole(x.CompanyRole) || IsPlanningRole(x.TeamRole))
+            .Where(x => x.DeclaredRoleKeys.Contains("software-product-manager", StringComparer.Ordinal) ||
+                        x.DeclaredRoleKeys.Contains("project-manager", StringComparer.Ordinal))
             .Select(x => Guid.TryParse(x.EmployeeId, out var id) ? id : Guid.Empty)
             .Where(x => x != Guid.Empty)
             .ToHashSet() ?? [];

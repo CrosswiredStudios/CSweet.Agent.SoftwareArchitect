@@ -506,9 +506,9 @@ public sealed class SoftwareArchitectAgentTests
                     board.Board.TeamId!.Value.ToString("D"), "product", "Product Team", 1,
                     Guid.NewGuid().ToString("D"), "Product Manager",
                     [
-                        new AgentTeammate(architectEmployeeId.ToString("D"), "Architect", "Agent", null, "Software Architect", "Peer", "Active"),
-                        new AgentTeammate(developerEmployeeId.ToString("D"), "Developer", "Agent", null, "Software Developer", "Peer", "Active"),
-                        new AgentTeammate(qualityEmployeeId.ToString("D"), "QA", "Agent", null, "Software QA", "Peer", "Active")
+                        new AgentTeammate(architectEmployeeId.ToString("D"), "Architect", "Agent", null, "Software Architect", "Peer", "Active") { DeclaredRoleKeys = ["software-architect"] },
+                        new AgentTeammate(developerEmployeeId.ToString("D"), "Developer", "Agent", null, "Software Developer", "Peer", "Active") { DeclaredRoleKeys = ["software-developer"] },
+                        new AgentTeammate(qualityEmployeeId.ToString("D"), "QA", "Agent", null, "Software QA", "Peer", "Active") { DeclaredRoleKeys = ["software-qa"] }
                     ], [], 3, false))))
             .RegisterCapability<object, OrganizationSnapshotResponse>(
                 PlatformCapabilities.OrganizationSnapshotRead,
@@ -1242,9 +1242,9 @@ Keep all tickets in Backlog and leave dates, estimates, repository details, and 
                 Guid.NewGuid().ToString("D"), "Architect",
                 [
                     new AgentTeammate(Guid.NewGuid().ToString("D"), "Developer", "Human", null,
-                        "Software Developer", "Peer", "Active"),
+                        "Software Developer", "Peer", "Active") { DeclaredRoleKeys = ["software-developer"] },
                     new AgentTeammate(Guid.NewGuid().ToString("D"), "QA", "Agent", null,
-                        "Software QA", "Peer", "Active")
+                        "Software QA", "Peer", "Active") { DeclaredRoleKeys = ["software-qa"] }
                 ], [], 2, false))));
 
     private static TeamRosterResponse Roster(string developerType, string qualityType) =>
@@ -1253,9 +1253,9 @@ Keep all tickets in Backlog and leave dates, estimates, repository details, and 
             Guid.NewGuid().ToString("D"), "Architect",
             [
                 new AgentTeammate(Guid.NewGuid().ToString("D"), "Developer", developerType, null,
-                    "Software Developer", "Peer", "Active"),
+                    "Software Developer", "Peer", "Active") { DeclaredRoleKeys = ["software-developer"] },
                 new AgentTeammate(Guid.NewGuid().ToString("D"), "QA", qualityType, null,
-                    "Software QA", "Peer", "Active")
+                    "Software QA", "Peer", "Active") { DeclaredRoleKeys = ["software-qa"] }
             ], [], 2, false));
 
     private static ArchitectureDesignResponse FinalizedDesign(ArchitecturePlan plan) =>

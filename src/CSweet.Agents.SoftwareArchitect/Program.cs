@@ -12,9 +12,9 @@ if (args.Contains("--self-test", StringComparer.Ordinal))
             Guid.NewGuid().ToString("D"), "Architect",
             [
                 new AgentTeammate(Guid.NewGuid().ToString("D"), "Developer", "Human", null,
-                    "Software Developer", "Peer", "Active"),
+                    "Software Developer", "Peer", "Active") { DeclaredRoleKeys = ["software-developer"] },
                 new AgentTeammate(Guid.NewGuid().ToString("D"), "QA", "Agent", null,
-                    "Software QA", "Peer", "Active")
+                    "Software QA", "Peer", "Active") { DeclaredRoleKeys = ["software-qa"] }
             ], [], 2, false))));
     var result = await runtime.ExecuteCapabilityAsync(
         agent,

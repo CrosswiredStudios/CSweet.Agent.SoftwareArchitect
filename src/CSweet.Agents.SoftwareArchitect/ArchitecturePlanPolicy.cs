@@ -390,8 +390,8 @@ internal static class ArchitecturePlanPolicy
     {
         var deliveryMembers = roster.Team?.Members
             .Where(x => !x.Presence.Equals("Inactive", StringComparison.OrdinalIgnoreCase) &&
-                        (NormalizeRole(x.TeamRole ?? x.CompanyRole ?? string.Empty) == NormalizeRole("Software Developer") ||
-                         NormalizeRole(x.TeamRole ?? x.CompanyRole ?? string.Empty) == NormalizeRole("Software QA")))
+                        (x.DeclaredRoleKeys.Contains("software-developer", StringComparer.Ordinal) ||
+                         x.DeclaredRoleKeys.Contains("software-qa", StringComparer.Ordinal)))
             .ToList() ?? [];
         if (deliveryMembers.Count == 0)
             return new ArchitectureDeliveryProfile(
