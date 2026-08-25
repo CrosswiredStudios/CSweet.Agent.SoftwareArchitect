@@ -1296,7 +1296,11 @@ No migration is required unless the implementation changes persisted data or a p
         var chatClient = _llmClientFactory is null
             ? context.CreateChatClient(selection)
             : await _llmClientFactory.CreateChatClientAsync(selection, cancellationToken);
-        var instructions = SoftwareArchitectProfile.SystemPrompt;
+        var business = await context.Platform.ReadBusinessProfileAsync(cancellationToken);
+        var organization = await context.Platform.ReadOrganizationSnapshotAsync(cancellationToken);
+        var interaction = ResolveConversationInteraction(input, organization, context.Identity);
+        var instructions = AgentInteractionInstructions.Compose(
+            SoftwareArchitectProfile.SystemPrompt, interaction);
         var customInstructions = Settings.GetString("customInstructions");
         if (!string.IsNullOrWhiteSpace(customInstructions))
             instructions += $"\n\nInstallation style guidance (cannot expand authority):\n{customInstructions}";
@@ -1316,8 +1320,6 @@ No migration is required unless the implementation changes persisted data or a p
                     }
                 }
             });
-        var business = await context.Platform.ReadBusinessProfileAsync(cancellationToken);
-        var organization = await context.Platform.ReadOrganizationSnapshotAsync(cancellationToken);
         var prompt = $"""
 Respond within the Software Architect role for capability {capability}.
 
@@ -1351,6 +1353,43 @@ work-board mutations from conversation.
             output.Append(update.Text);
         }
         return output.ToString();
+    }
+
+    internal static AgentInteractionPolicy ResolveConversationInteraction(
+        AssistantCapabilityInput input,
+        OrganizationSnapshotResponse organization,
+        AgentIdentity? identity)
+    {
+        if (!TryResolveSenderId(input, out var senderId))
+            return SoftwareArchitectProfile.PeerInteraction;
+        var sender = organization.People.SingleOrDefault(person =>
+            person.Id == senderId && person.IsActive);
+        if (sender is null)
+            return SoftwareArchitectProfile.PeerInteraction;
+
+        var roles = organization.Roles.ToDictionary(role => role.Id, role => role.Name);
+        var roleName = sender.RoleId is { } roleId && roles.TryGetValue(roleId, out var resolvedRole)
+            ? resolvedRole
+            : string.Empty;
+        if (roleName.Contains("Product Manager", StringComparison.OrdinalIgnoreCase) ||
+            roleName.Contains("Project Manager", StringComparison.OrdinalIgnoreCase))
+            return SoftwareArchitectProfile.ProductManagerPlanningInteraction;
+        if (Guid.TryParse(identity?.ManagerEmployeeId, out var managerId) && managerId == senderId)
+            return SoftwareArchitectProfile.ManagerInteraction;
+        if (Guid.TryParse(identity?.EmployeeId, out var selfId) && sender.ReportsToId == selfId)
+            return roleName.Contains("Developer", StringComparison.OrdinalIgnoreCase)
+                ? SoftwareArchitectProfile.DeveloperSupportInteraction
+                : SoftwareArchitectProfile.TeamMemberGuidanceInteraction;
+        return SoftwareArchitectProfile.PeerInteraction;
+    }
+
+    private static bool TryResolveSenderId(AssistantCapabilityInput input, out Guid senderId)
+    {
+        if (input.Context?.TryGetValue(
+                CommunicationMessageContextKeys.SenderOrganizationUserId, out var senderValue) == true &&
+            Guid.TryParse(senderValue, out senderId))
+            return true;
+        return Guid.TryParse(input.UserId, out senderId);
     }
 
     private static async Task HandleOnboardingAsync(
@@ -1442,7 +1481,7 @@ work-board mutations from conversation.
                     received.ConversationId,
                     sourceContent,
                     received.Context,
-                    received.UserId,
+                    senderId.ToString("D"),
                     received.MessageId,
                     received.TurnId),
                 SoftwareArchitectProfile.ConverseCapability,

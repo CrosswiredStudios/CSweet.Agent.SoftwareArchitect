@@ -31,12 +31,16 @@ public sealed class HarnessIsolationTests
         Assert.Null(options.BackgroundAgents);
 #pragma warning restore MAAI001
         Assert.False(options.DisableOpenTelemetry);
+        Assert.Contains("Mode: supporting-specialist.v1", options.ChatOptions!.Instructions,
+            StringComparison.Ordinal);
+        Assert.Contains("Expected response: deliverable-or-clarification", options.ChatOptions.Instructions,
+            StringComparison.Ordinal);
 #pragma warning disable MAAI001
         Assert.Equal(SoftwareArchitectProfile.DefaultContextWindowTokens, options.MaxContextWindowTokens);
         Assert.Equal(SoftwareArchitectProfile.DefaultOutputTokens, options.MaxOutputTokens);
 #pragma warning restore MAAI001
 
-        var names = options.ChatOptions!.Tools!
+        var names = options.ChatOptions.Tools!
             .OfType<AIFunctionDeclaration>()
             .Select(x => x.Name)
             .ToArray();

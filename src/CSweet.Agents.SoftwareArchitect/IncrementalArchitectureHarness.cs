@@ -86,7 +86,11 @@ internal sealed class IncrementalArchitectureHarness(IAgentLlmClientFactory? llm
             Name = context.Identity?.DisplayName ?? SoftwareArchitectProfile.DisplayName,
             Description = "Produces one bounded incremental planning artifact.",
             MaximumIterationsPerRequest = 4,
-            ChatOptions = new ChatOptions { Instructions = SoftwareArchitectProfile.SystemPrompt, Tools = [tool] },
+            ChatOptions = new ChatOptions
+            {
+                Instructions = SoftwareArchitectProfile.ProductManagerPlanningInstructions,
+                Tools = [tool]
+            },
             DisableAgentModeProvider = true,
             DisableAgentSkillsProvider = true,
             DisableFileMemory = true,

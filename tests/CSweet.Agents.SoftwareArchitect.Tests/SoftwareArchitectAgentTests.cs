@@ -7,6 +7,31 @@ namespace CSweet.Agents.SoftwareArchitect.Tests;
 public sealed class SoftwareArchitectAgentTests
 {
     [Fact]
+    public void ConversationInteraction_WithProductManager_UsesSupportingSpecialistMode()
+    {
+        var architectId = Guid.NewGuid();
+        var productManagerId = Guid.NewGuid();
+        var roleId = Guid.NewGuid();
+        var organization = new OrganizationSnapshotResponse(
+            Guid.NewGuid(), "Active",
+            [new OrganizationPerson(productManagerId, "PM", "Agent", roleId, null, Guid.NewGuid(), true)],
+            [new OrganizationRole(roleId, "Software Product Manager", "Leads product planning.", "[]")],
+            [], [], [], DateTimeOffset.UtcNow);
+        var input = new AssistantCapabilityInput(
+            Guid.NewGuid(), Guid.NewGuid().ToString("D"), "Please produce the design.", null,
+            productManagerId.ToString("D"));
+        var identity = new AgentIdentity(
+            architectId.ToString("D"), "Architect", null, "Software Architect", null, [], null,
+            productManagerId.ToString("D"), "PM");
+
+        var policy = SoftwareArchitectAgent.ResolveConversationInteraction(
+            input, organization, identity);
+
+        Assert.Equal(AgentInteractionModes.SupportingSpecialist, policy.Mode);
+        Assert.Equal("product-planning", policy.Purpose);
+    }
+
+    [Fact]
     public async Task PlanningDirective_WithMissingProductDecisions_ReturnsTypedClarificationBatch()
     {
         var productManager = new AgentCoordinationParticipant(

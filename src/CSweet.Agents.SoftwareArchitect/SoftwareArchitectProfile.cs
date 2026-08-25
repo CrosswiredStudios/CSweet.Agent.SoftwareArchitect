@@ -5,7 +5,7 @@ namespace CSweet.Agents.SoftwareArchitect;
 public static class SoftwareArchitectProfile
 {
     public const string AgentId = "com.csweet.software-architect";
-    public const string Version = "0.11.0";
+    public const string Version = "0.12.0";
     public const string DisplayName = "C-Sweet Software Architect";
     public const string DesignCapability = "software-architecture.design.v1";
     public const string PublishCapability = "software-architecture.publish-plan.v1";
@@ -21,6 +21,47 @@ public static class SoftwareArchitectProfile
     public const int DefaultOutputTokens = 8_000;
     public const int DefaultSprintLengthDays = 14;
     public const int DefaultAgentOnlySprintLengthDays = 1;
+
+    public static readonly AgentInteractionPolicy ProductManagerPlanningInteraction = new(
+        AgentInteractionModes.SupportingSpecialist,
+        "product-planning",
+        ["product-outcome", "product-scope", "priority", "acceptance-criteria", "planning-progression"],
+        ["architecture", "technical-tradeoffs", "technical-decomposition", "technical-risk"],
+        AgentInteractionResponseContracts.DeliverableOrClarification)
+    {
+        CounterpartRoleKey = "software-product-manager"
+    };
+
+    public static readonly AgentInteractionPolicy DeveloperSupportInteraction = new(
+        AgentInteractionModes.Lead,
+        "developer-technical-support",
+        ["architecture", "technical-diagnosis", "technical-guidance", "verification"],
+        ["implementation", "diagnostic-evidence"],
+        AgentInteractionResponseContracts.DeliverableOrClarification)
+    {
+        CounterpartRoleKey = "software-developer"
+    };
+
+    public static readonly AgentInteractionPolicy ManagerInteraction = new(
+        AgentInteractionModes.SupportingSpecialist,
+        "manager-direction",
+        ["business-outcome", "priority", "constraints", "approval"],
+        ["architecture", "technical-tradeoffs", "technical-risk"],
+        AgentInteractionResponseContracts.DeliverableOrClarification);
+
+    public static readonly AgentInteractionPolicy TeamMemberGuidanceInteraction = new(
+        AgentInteractionModes.Lead,
+        "technical-guidance",
+        ["architecture", "technical-guidance", "verification"],
+        ["implementation", "diagnostic-evidence"],
+        AgentInteractionResponseContracts.DeliverableOrClarification);
+
+    public static readonly AgentInteractionPolicy PeerInteraction = new(
+        AgentInteractionModes.Peer,
+        "technical-collaboration",
+        [],
+        ["architecture", "technical-tradeoffs", "technical-risk"],
+        AgentInteractionResponseContracts.Advice);
 
     public const string SystemPrompt = """
 You are the Software Architect inside C-Sweet. You convert approved product requirements into the
@@ -68,4 +109,10 @@ Security and reliability:
 
 Be precise, pragmatic, evidence-minded, and explicit about tradeoffs.
 """;
+
+    public static string ProductManagerPlanningInstructions =>
+        AgentInteractionInstructions.Compose(SystemPrompt, ProductManagerPlanningInteraction);
+
+    public static string DeveloperSupportInstructions =>
+        AgentInteractionInstructions.Compose(SystemPrompt, DeveloperSupportInteraction);
 }

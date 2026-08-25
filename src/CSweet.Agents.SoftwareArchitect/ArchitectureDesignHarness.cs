@@ -87,7 +87,7 @@ internal sealed class ArchitectureDesignHarness(
         int maxContextWindowTokens = SoftwareArchitectProfile.DefaultContextWindowTokens,
         int maxOutputTokens = SoftwareArchitectProfile.DefaultOutputTokens)
     {
-        var instructions = SoftwareArchitectProfile.SystemPrompt;
+        var instructions = SoftwareArchitectProfile.ProductManagerPlanningInstructions;
         if (!string.IsNullOrWhiteSpace(customInstructions))
         {
             instructions += $"""

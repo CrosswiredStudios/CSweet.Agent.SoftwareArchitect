@@ -42,7 +42,7 @@ internal sealed class ArchitectureSupportHarness(IAgentLlmClientFactory? llmClie
             MaximumIterationsPerRequest = 8,
             ChatOptions = new ChatOptions
             {
-                Instructions = SoftwareArchitectProfile.SystemPrompt + """
+                Instructions = SoftwareArchitectProfile.DeveloperSupportInstructions + """
 
 You are in the developer-guidance harness. Diagnose only the linked work item and approved design.
 Never change product scope, budget, timing, risk acceptance, assignments, repository, or sprint state.

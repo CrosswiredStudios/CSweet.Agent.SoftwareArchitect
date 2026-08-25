@@ -1,6 +1,6 @@
 # Software Architect grants
 
-This document describes the minimum authority requested by package version `0.11.0`.
+This document describes the minimum authority requested by package version `0.12.0`.
 
 The Product Manager starts durable collaboration. The Architect advances it with
 `communication.coordination.respond.v1`, `communication.coordination.read.v1`, and

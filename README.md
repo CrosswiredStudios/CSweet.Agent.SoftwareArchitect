@@ -1,7 +1,7 @@
 # C-Sweet Software Architect
 
-First-party C-Sweet Software Architect agent, version `0.11.0`, built on .NET 10,
-`CSweet.Agent.SDK` 3.17.0, Microsoft Agent Framework Harness 1.15.0, and manifest protocol v2.
+First-party C-Sweet Software Architect agent, version `0.12.0`, built on .NET 10,
+`CSweet.Agent.SDK` 3.18.0, Microsoft Agent Framework Harness 1.15.0, and manifest protocol v2.
 
 The agent converts approved product requirements into maintainable system designs, incremental
 sprint plans, and developer-ready tickets. Product and Project Managers retain ownership of
@@ -60,6 +60,12 @@ requested technical artifact or one typed batch of product questions. It recover
 from the durable transcript and never asks the PM to resend protocol metadata. PM design decisions
 embed the next directive, so an approved design proceeds immediately to Story planning. Every
 nonterminal message remains readable in chat but is controlled by its structured artifact.
+
+Model-backed planning composes the stable Architect role prompt with the SDK's
+`supporting-specialist.v1` interaction policy. The PM leads planning progression and product
+decisions; the Architect fulfills the directive while retaining architecture, technical-tradeoff,
+decomposition, and risk authority. Developer support instead uses `lead.v1`, while unclassified
+authorized conversations use `peer.v1`.
 
 Assigned Developers can open a work-item-scoped technical-support session. The Architect validates
 the immutable stage assignment and approved design, returns bounded typed guidance, and requests PM
