@@ -7,6 +7,41 @@ namespace CSweet.Agents.SoftwareArchitect.Tests;
 public sealed class SoftwareArchitectAgentTests
 {
     [Fact]
+    public async Task PlanningDirective_WithMissingProductDecisions_ReturnsTypedClarificationBatch()
+    {
+        var productManager = new AgentCoordinationParticipant(
+            Guid.NewGuid(), Guid.NewGuid(), "Product Manager", "Software Product Manager");
+        var architect = new AgentCoordinationParticipant(
+            Guid.NewGuid(), Guid.NewGuid(), "Architect", "Software Architect");
+        var brief = new IncrementalProductBrief(
+            Guid.NewGuid(), "plan-1", "Ship the product", ["The product works"],
+            ["The outcome can be demonstrated"],
+            new IncrementalEpic("EPIC-1", "First outcome", "Deliver value", ["Value is demonstrated"]),
+            ArchitecturePlanningStages.Design);
+        var briefArtifact = new AgentCoordinationArtifact(
+            IncrementalPlanningArtifactTypes.ArchitectureBrief, "2.1", "plan-1:brief", 0, true,
+            JsonSerializer.SerializeToElement(brief), new string('a', 64));
+        var request = new AgentCoordinationTurnRequest(
+            Guid.NewGuid(), 1, 1, "Product planning", "Ship the product", ["The outcome works"],
+            architect, productManager, false,
+            [new AgentCoordinationTurn(Guid.NewGuid(), 0, productManager.OrganizationUserId,
+                AgentCoordinationDispositions.Continue, "Design this approved scope.",
+                DateTimeOffset.UtcNow, briefArtifact)]);
+
+        var result = await new SoftwareArchitectAgent().HandleCoordinationTurnAsync(
+            request, new AgentTestRuntime().CreateContext(), CancellationToken.None);
+
+        Assert.Equal(AgentCoordinationDispositions.Continue, result.Disposition);
+        Assert.Equal(IncrementalPlanningArtifactTypes.QuestionV2, result.Artifact!.Type);
+        var clarification = result.Artifact.Payload.Deserialize<SoftwareArchitectureClarificationRequest>(
+            new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        Assert.NotNull(clarification);
+        Assert.Contains(clarification!.Questions, question => question.Id == "primary-workflow");
+        Assert.Contains(clarification.Questions, question => question.Id == "target-platform");
+        Assert.Contains(clarification.Questions, question => question.Id == "release-boundary");
+    }
+
+    [Fact]
     public async Task WorkSupport_FailsClosedBeforeModelWhenAssignmentRevisionIsStale()
     {
         var developer = new AgentCoordinationParticipant(

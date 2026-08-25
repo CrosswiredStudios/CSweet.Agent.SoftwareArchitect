@@ -400,6 +400,7 @@ Confirmed actions: the Product Manager owns the requirements, acceptance criteri
 """);
         }
 
+        var transcript = new AgentCoordinationTranscript(request.Transcript);
         if (latest?.Artifact is { } decisionArtifact &&
             string.Equals(decisionArtifact.Type, IncrementalPlanningArtifactTypes.ArchitectureDecision, StringComparison.Ordinal))
         {
@@ -411,40 +412,69 @@ Confirmed actions: the Product Manager owns the requirements, acceptance criteri
                 !string.Equals(designTurn.Artifact.Digest, decision.DesignDigest, StringComparison.OrdinalIgnoreCase))
                 return AgentCoordinationTurnResult.Blocked(
                     "The Product Manager decision does not reference the exact design digest.");
-            if (string.Equals(decision.Decision, "approved", StringComparison.OrdinalIgnoreCase))
-                return AgentCoordinationTurnResult.Continue(
-                    "The exact architecture digest is approved. Send the first product-management.architecture-brief.v2 Story stage referencing that digest.");
             if (string.Equals(decision.Decision, "rejected", StringComparison.OrdinalIgnoreCase))
                 return AgentCoordinationTurnResult.Blocked($"The architecture design was rejected: {decision.Rationale}");
-            if (decision.Revision >= 3)
+            if (!string.Equals(decision.Decision, "approved", StringComparison.OrdinalIgnoreCase) &&
+                decision.Revision >= 3)
                 return AgentCoordinationTurnResult.Blocked(
                     $"Three bounded design revisions were exhausted. Focused manager decision required: {decision.Rationale}");
-            var briefTurn = request.Transcript.OrderByDescending(x => x.Ordinal).FirstOrDefault(x =>
-                x.Artifact?.Type == IncrementalPlanningArtifactTypes.ArchitectureBrief);
-            var prior = briefTurn?.Artifact?.Payload.Deserialize<IncrementalProductBrief>(IncrementalPlanningJson.Options)
+            var briefTurn = transcript.LatestArtifactTurn(
+                [IncrementalPlanningArtifactTypes.ArchitectureBrief, IncrementalPlanningArtifactTypes.ProductBrief],
+                request.Counterpart.OrganizationUserId);
+            var prior = briefTurn is null
+                ? null
+                : transcript.DeserializeArtifact<IncrementalProductBrief>(briefTurn, IncrementalPlanningJson.Options);
+            var directive = decision.NextDirective ?? prior
                 ?? throw new ArchitectureDesignException("The persisted architecture brief is unavailable for revision.");
-            return await ProposeDesignAsync(
-                prior with
+            directive = string.Equals(decision.Decision, "approved", StringComparison.OrdinalIgnoreCase)
+                ? directive with
                 {
-                    Constraints = prior.Constraints.Append($"PM revision request: {decision.Rationale}").ToArray(),
+                    Stage = ArchitecturePlanningStages.Stories,
+                    ApprovedDesignDigest = decision.DesignDigest
+                }
+                : directive with
+                {
+                    Stage = ArchitecturePlanningStages.Design,
+                    Constraints = directive.Constraints.Append($"PM revision request: {decision.Rationale}").ToArray(),
                     DesignRevision = decision.Revision + 1
-                }, context, cancellationToken);
+                };
+            return await HandlePlanningDirectiveAsync(directive, context, cancellationToken);
         }
 
-        if (latest?.Artifact is not { } artifact ||
-            !(string.Equals(artifact.Type, IncrementalPlanningArtifactTypes.ProductBrief, StringComparison.Ordinal) ||
-              string.Equals(artifact.Type, IncrementalPlanningArtifactTypes.ArchitectureBrief, StringComparison.Ordinal)))
+        var directiveTurn = latest?.Artifact is { } latestArtifact &&
+                            (string.Equals(latestArtifact.Type, IncrementalPlanningArtifactTypes.ProductBrief, StringComparison.Ordinal) ||
+                             string.Equals(latestArtifact.Type, IncrementalPlanningArtifactTypes.ArchitectureBrief, StringComparison.Ordinal))
+            ? latest
+            : transcript.LatestArtifactTurn(
+                [IncrementalPlanningArtifactTypes.ArchitectureBrief, IncrementalPlanningArtifactTypes.ProductBrief],
+                request.Counterpart.OrganizationUserId);
+        if (directiveTurn?.Artifact is null)
         {
-            return AgentCoordinationTurnResult.Continue(
-                "Please send the current approved scope as product-management.architecture-brief.v2; legacy text alone is not a completed planning stage.");
+            return CreateClarificationResult(new SoftwareArchitectureClarificationRequest(
+                $"coordination-{request.SessionId:N}", ArchitecturePlanningStages.Design, "approved-scope",
+                [new("approved-scope", "What approved product outcome and scope should this design satisfy?",
+                    "A technical design must be traceable to manager-owned product scope.", "product-scope")],
+                new Dictionary<string, string>()));
         }
 
-        var brief = artifact.Payload.Deserialize<IncrementalProductBrief>(IncrementalPlanningJson.Options)
-            ?? throw new ArchitectureDesignException("The incremental product brief artifact is empty.");
+        var brief = transcript.DeserializeArtifact<IncrementalProductBrief>(
+            directiveTurn, IncrementalPlanningJson.Options);
+        return await HandlePlanningDirectiveAsync(brief, context, cancellationToken);
+    }
+
+    private async Task<AgentCoordinationTurnResult> HandlePlanningDirectiveAsync(
+        IncrementalProductBrief brief,
+        AgentRuntimeContext context,
+        CancellationToken cancellationToken)
+    {
+        var clarification = BuildClarificationRequest(brief);
+        if (clarification is not null)
+            return CreateClarificationResult(clarification);
+
         var harness = new IncrementalArchitectureHarness(_llmClientFactory);
-        if (string.Equals(brief.Stage, "design", StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(brief.Stage, ArchitecturePlanningStages.Design, StringComparison.OrdinalIgnoreCase))
             return await ProposeDesignAsync(brief, context, cancellationToken);
-        if (string.Equals(brief.Stage, "stories", StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(brief.Stage, ArchitecturePlanningStages.Stories, StringComparison.OrdinalIgnoreCase))
         {
             if (string.IsNullOrWhiteSpace(brief.ApprovedDesignDigest))
                 return AgentCoordinationTurnResult.Blocked(
@@ -462,7 +492,7 @@ Confirmed actions: the Product Manager owns the requirements, acceptance criteri
                     0, true, JsonSerializer.SerializeToElement(proposal, IncrementalPlanningJson.Options)));
         }
 
-        if (string.Equals(brief.Stage, "tasks", StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(brief.Stage, ArchitecturePlanningStages.Tasks, StringComparison.OrdinalIgnoreCase))
         {
             if (string.IsNullOrWhiteSpace(brief.ApprovedDesignDigest))
                 return AgentCoordinationTurnResult.Blocked(
@@ -493,15 +523,50 @@ Confirmed actions: the Product Manager owns the requirements, acceptance criteri
                     proposal.IsFinalPage, JsonSerializer.SerializeToElement(proposal, IncrementalPlanningJson.Options)));
         }
 
-        var question = new IncrementalArchitectureQuestion(
-            brief.PlanKey, brief.Story?.Key ?? brief.Epic.Key,
-            "Which bounded planning stage should I perform for this scope?");
-        return AgentCoordinationTurnResult.Blocked(
-            $"Focused product question: {question.Question}",
-            new AgentCoordinationArtifactSubmission(
-                IncrementalPlanningArtifactTypes.Question, "1.0", $"{brief.PlanKey}:question",
-                0, true, JsonSerializer.SerializeToElement(question, IncrementalPlanningJson.Options)));
+        return CreateClarificationResult(new SoftwareArchitectureClarificationRequest(
+            brief.PlanKey, brief.Stage, brief.Story?.Key ?? brief.Epic.Key,
+            [new("planning-stage", "Which bounded planning stage should I perform for this scope?",
+                "The directive stage is not recognized.", "planning-scope")], brief.SourceRevisions));
     }
+
+    private static SoftwareArchitectureClarificationRequest? BuildClarificationRequest(
+        IncrementalProductBrief brief)
+    {
+        if (!string.Equals(brief.Stage, ArchitecturePlanningStages.Design, StringComparison.OrdinalIgnoreCase) ||
+            brief.ProductDecisions.Count > 0)
+            return null;
+
+        var context = string.Join(' ', brief.Requirements.Concat(brief.AcceptanceCriteria)
+            .Concat(brief.Constraints).Concat(brief.NonGoals).Prepend(brief.ProductGoal));
+        var questions = new List<ArchitectureClarificationQuestion>();
+        if (!ContainsAny(context, "workflow", "journey", "loop", "process", "race", "gameplay", "user can"))
+            questions.Add(new("primary-workflow", "What exact primary user workflow must the first release complete?",
+                "The primary workflow determines system boundaries and vertical delivery slices.", "product-scope"));
+        if (!ContainsAny(context, "browser", "web", "mobile", "desktop", "server", "cloud", "device", "platform"))
+            questions.Add(new("target-platform", "Which runtime platforms and devices must the first release support?",
+                "Runtime targets determine compatibility, deployment, and performance architecture.", "platform"));
+        if (brief.NonGoals.Count == 0 && !ContainsAny(context, "first release", "mvp", "v1", "initial scope", "non-goal"))
+            questions.Add(new("release-boundary", "What is explicitly outside the first release?",
+                "A bounded release needs explicit exclusions to avoid accidental architecture scope.", "product-scope"));
+        return questions.Count == 0
+            ? null
+            : new SoftwareArchitectureClarificationRequest(
+                brief.PlanKey, brief.Stage, brief.Story?.Key ?? brief.Epic.Key,
+                questions, brief.SourceRevisions);
+    }
+
+    private static bool ContainsAny(string value, params string[] candidates) =>
+        candidates.Any(candidate => value.Contains(candidate, StringComparison.OrdinalIgnoreCase));
+
+    private static AgentCoordinationTurnResult CreateClarificationResult(
+        SoftwareArchitectureClarificationRequest clarification) =>
+        AgentCoordinationTurnResult.Continue(
+            $"I need {clarification.Questions.Count} product decision(s) before I can safely complete the requested " +
+            $"{clarification.Stage} work: {string.Join(" ", clarification.Questions.Select(x => x.Question))}",
+            new AgentCoordinationArtifactSubmission(
+                IncrementalPlanningArtifactTypes.QuestionV2, "2.0",
+                $"{clarification.PlanKey}:{clarification.ScopeKey}:{clarification.Stage}:questions",
+                0, true, JsonSerializer.SerializeToElement(clarification, IncrementalPlanningJson.Options)));
 
     private async Task<AgentCoordinationTurnResult> ProposeDesignAsync(
         IncrementalProductBrief brief,
@@ -527,7 +592,8 @@ Confirmed actions: the Product Manager owns the requirements, acceptance criteri
         if (validation is not null)
             return AgentCoordinationTurnResult.Blocked(validation);
         var proposal = new SoftwareArchitectureDesignProposal(
-            brief.PlanKey, brief.BoardId, brief.DesignRevision, plan,
+            brief.PlanKey, brief.BoardId, brief.DesignRevision,
+            JsonSerializer.SerializeToElement(plan, IncrementalPlanningJson.Options),
             [
                 $"Defines {plan.Components.Count} component boundary or boundaries.",
                 $"Records {plan.Decisions.Count} technical decision(s) and {plan.Risks.Count} risk(s).",

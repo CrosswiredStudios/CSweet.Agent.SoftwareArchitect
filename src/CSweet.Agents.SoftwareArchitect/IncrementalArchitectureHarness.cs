@@ -1,4 +1,5 @@
 using CSweet.Agent.SDK;
+using CSweet.WorkManagement.Contracts;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
 

@@ -1,7 +1,7 @@
 # C-Sweet Software Architect
 
-First-party C-Sweet Software Architect agent, version `0.10.1`, built on .NET 10,
-`CSweet.Agent.SDK` 3.16.1, Microsoft Agent Framework Harness 1.15.0, and manifest protocol v2.
+First-party C-Sweet Software Architect agent, version `0.11.0`, built on .NET 10,
+`CSweet.Agent.SDK` 3.17.0, Microsoft Agent Framework Harness 1.15.0, and manifest protocol v2.
 
 The agent converts approved product requirements into maintainable system designs, incremental
 sprint plans, and developer-ready tickets. Product and Project Managers retain ownership of
@@ -54,6 +54,12 @@ Incremental PM collaboration is design-first: architecture brief v2, complete de
 approval of the exact design digest, sprint-grouped Story proposals, and paged junior-ready Task
 proposals with role/capability delegation recommendations. The PM retains product approval,
 repository selection, exact assignment, preflight, and sprint lifecycle authority.
+
+The PM leads each planning exchange with a typed directive. The Architect responds by producing the
+requested technical artifact or one typed batch of product questions. It recovers earlier briefs
+from the durable transcript and never asks the PM to resend protocol metadata. PM design decisions
+embed the next directive, so an approved design proceeds immediately to Story planning. Every
+nonterminal message remains readable in chat but is controlled by its structured artifact.
 
 Assigned Developers can open a work-item-scoped technical-support session. The Architect validates
 the immutable stage assignment and approved design, returns bounded typed guidance, and requests PM
