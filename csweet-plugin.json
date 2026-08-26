@@ -9,10 +9,13 @@
   },
   "id": "com.csweet.software-architect",
   "name": "C-Sweet Software Architect",
-  "version": "0.13.1",
+  "version": "0.14.0",
   "publisher": {
     "id": "com.csweet",
     "name": "C-Sweet"
+  },
+  "workItemTypes": {
+    "requires": ["software.epic.v1", "software.story.v1", "software.task.v1"]
   },
   "runtime": {
     "type": "dotnet-project",
@@ -961,6 +964,12 @@
       "modelVisible": false
     },
     {
+      "name": "communication.coordination.start-board.v1",
+      "scope": "team",
+      "purpose": "Start or resume the bounded board-scoped work review with the accountable Product Manager",
+      "modelVisible": false
+    },
+    {
       "name": "communication.coordination.list.v1",
       "scope": "team",
       "purpose": "Reconcile open and stalled architecture coordination",
@@ -990,6 +999,23 @@
       "name": "work.item.read",
       "scope": "board",
       "purpose": "Read existing work to avoid duplicate or conflicting architecture plans"
+    },
+    {
+      "name": "work.item.types.read.v1",
+      "scope": "organization",
+      "purpose": "Read the platform-owned work type and approval-policy catalog"
+    },
+    {
+      "name": "work.item.planning.revise.v1",
+      "scope": "board",
+      "purpose": "Apply an accepted technical refinement against the exact planning revision",
+      "modelVisible": false
+    },
+    {
+      "name": "work.item.approval.decide.v1",
+      "scope": "board",
+      "purpose": "Approve or request changes for the exact software planning revision",
+      "modelVisible": false
     },
     {
       "name": "work.item.comments.read",
@@ -1075,8 +1101,9 @@
       "com.csweet.communication.message.mentioned.v1",
       "com.csweet.agent.onboarded.v1",
       "com.csweet.user.message.received.v1",
-      "com.csweet.agent.coordination.turn-requested.v1"
-      ,"com.csweet.agent.attention.review-due.v1"
+      "com.csweet.agent.coordination.turn-requested.v1",
+      "com.csweet.work.item.approval-required.v1",
+      "com.csweet.agent.attention.review-due.v1"
     ]
   },
   "configuration": [

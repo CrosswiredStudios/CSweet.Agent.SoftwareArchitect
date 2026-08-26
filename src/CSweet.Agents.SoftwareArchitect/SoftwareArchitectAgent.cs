@@ -101,9 +101,116 @@ public sealed class SoftwareArchitectAgent : CSweetAgentBase
               item.CorrelationId.StartsWith("architecture-escalation:", StringComparison.Ordinal)))
             return PersonalTodoResult.Blocked(
                 "Unknown personal work is outside the Software Architect operating contract. Use an approved planning or work-support coordination.");
+        if (TryExtractBoardId(item.CorrelationId, out var boardId))
+        {
+            var reviewed = await ReviewPendingBoardWorkAsync(boardId, context, cancellationToken);
+            if (reviewed is not null)
+                return PersonalTodoResult.Completed(reviewed);
+        }
         return PersonalTodoResult.WaitingUntil(
             DateTimeOffset.UtcNow.AddMinutes(5),
             "The durable architecture commitment remains open until its authoritative dependency changes.");
+    }
+
+    private static bool TryExtractBoardId(string correlationId, out Guid boardId)
+    {
+        foreach (var segment in correlationId.Split(':'))
+        {
+            if (Guid.TryParseExact(segment, "N", out boardId) || Guid.TryParse(segment, out boardId))
+                return true;
+        }
+        boardId = Guid.Empty;
+        return false;
+    }
+
+    private static async Task<string?> ReviewPendingBoardWorkAsync(
+        Guid boardId,
+        AgentRuntimeContext context,
+        CancellationToken cancellationToken)
+    {
+        var board = await context.Platform.Work.ReadBoardAsync(boardId, cancellationToken);
+        var pending = board.Items
+            .Where(x => x.TypeKey is WorkItemTypeKeys.SoftwareStoryV1 or WorkItemTypeKeys.SoftwareTaskV1)
+            .Where(x => x.Approvals.Any(approval =>
+                approval.PolicyKey == WorkItemApprovalPolicyKeys.SoftwareArchitectureReviewV1 &&
+                (approval.Status == WorkItemApprovalStatuses.Pending ||
+                 approval.Status == WorkItemApprovalStatuses.Waived ||
+                 approval.Status == WorkItemApprovalStatuses.ChangesRequested ||
+                 approval.PlanningRevision != x.PlanningRevision)))
+            .OrderBy(x => x.Identifier, StringComparer.Ordinal)
+            .Take(50)
+            .ToList();
+        if (pending.Count == 0) return null;
+
+        var roster = await context.Platform.ReadCompleteTeamRosterAsync(token: cancellationToken);
+        var manager = roster?.Members.FirstOrDefault(x =>
+            x.DeclaredRoleKeys.Contains("software-product-manager", StringComparer.Ordinal));
+        if (manager is null || !Guid.TryParse(manager.EmployeeId, out var managerId))
+            return null;
+
+        var recommendations = pending.Select(work =>
+        {
+            var missing = new List<string>();
+            if (work.Planning is null) missing.Add("structured planning");
+            if (work.Planning?.Requirements.Count is null or 0) missing.Add("requirements");
+            if (work.Planning?.AcceptanceCriteria.Count is null or 0) missing.Add("acceptance criteria");
+            if (string.IsNullOrWhiteSpace(work.Planning?.ArchitectureArtifactDigest)) missing.Add("approved design linkage");
+            if (work.TypeKey == WorkItemTypeKeys.SoftwareTaskV1 &&
+                work.Planning?.DelegationRecommendations.Count is null or 0)
+                missing.Add("technical delegation guidance");
+            return new
+            {
+                workItemId = work.Id,
+                work.Identifier,
+                work.TypeKey,
+                work.PlanningRevision,
+                recommendation = missing.Count == 0 ? "Approve" : "ChangesRequested",
+                missing,
+                dependencies = work.Planning?.DependencyItemIds ?? [],
+                constraints = work.Planning?.Constraints ?? []
+            };
+        }).ToList();
+        var payload = JsonSerializer.SerializeToElement(new
+        {
+            boardId,
+            reviewedAt = DateTimeOffset.UtcNow,
+            items = recommendations
+        });
+        var artifact = new AgentCoordinationArtifactSubmission(
+            "software-architecture.work-review.v1", "1", $"board:{boardId:N}", 1, true, payload);
+        var session = await context.Platform.Communication.StartBoardCoordinationAsync(
+            new StartBoardCoordinationRequest(
+                managerId,
+                boardId,
+                $"{board.Board.Name} architecture review",
+                "Review pending software Stories and Tasks against the approved technical design.",
+                ["Every recommendation names an exact planning revision.", "Missing technical inputs result in changes requested, not invented scope."],
+                $"I reviewed {pending.Count} pending software work item(s). The attached artifact contains exact-revision recommendations.",
+                $"architecture-review:{boardId:N}:{string.Join('-', pending.Select(x => x.PlanningRevision))}",
+                artifact),
+            cancellationToken);
+        var persistedArtifact = session.Turns.OrderByDescending(x => x.Ordinal).FirstOrDefault()?.Artifact;
+
+        foreach (var work in pending)
+        {
+            var recommendation = recommendations.Single(x => x.workItemId == work.Id);
+            var approved = recommendation.recommendation == "Approve";
+            await context.Platform.Work.DecideApprovalAsync(
+                new DecideWorkItemApprovalRequest(
+                    boardId,
+                    work.Id,
+                    WorkItemApprovalPolicyKeys.SoftwareArchitectureReviewV1,
+                    approved ? WorkItemApprovalStatuses.Approved : WorkItemApprovalStatuses.ChangesRequested,
+                    work.PlanningRevision,
+                    approved
+                        ? "The exact planning revision is traceable to the approved design and contains executable technical guidance."
+                        : $"Planning requires refinement: {string.Join(", ", recommendation.missing)}.",
+                    $"architecture-review:{boardId:N}:{work.Id:N}:{work.PlanningRevision}",
+                    CoordinationSessionId: session.Id,
+                    ArtifactDigest: persistedArtifact?.Digest),
+                cancellationToken);
+        }
+        return $"Reviewed {pending.Count} software work item(s) with the Product Manager and recorded exact-revision architecture decisions.";
     }
 
     public override async Task HandleAttentionReviewAsync(
@@ -175,6 +282,9 @@ public sealed class SoftwareArchitectAgent : CSweetAgentBase
             var boardRevisionKey = $"board:{boardSummary.Id:N}";
             sourceRevisions[boardRevisionKey] = board.Board.Revision.ToString();
             boardRevisions[boardRevisionKey] = board.Board.Revision.ToString();
+            sourceRevisions[$"items:{boardSummary.Id:N}"] = string.Join('|', board.Items
+                .OrderBy(x => x.Id)
+                .Select(x => $"{x.Id:N}:{x.TypeKey}:{x.PlanningRevision}:{string.Join(',', x.Approvals.OrderBy(a => a.PolicyKey).Select(a => $"{a.PolicyKey}={a.Status}@{a.PlanningRevision}"))}"));
             var executable = board.Items.Where(x => x.Kind is WorkItemKinds.Story or WorkItemKinds.Task).ToList();
             if (executable.Count == 0)
                 conditions.Add(SoftwareArchitectConditionCodes.PlanningUnconfigured);
@@ -182,6 +292,11 @@ public sealed class SoftwareArchitectAgent : CSweetAgentBase
                 board.Items.Where(x => x.Kind == WorkItemKinds.Story)
                     .Any(story => board.Items.All(task => task.ParentItemId != story.Id)))
                 conditions.Add(SoftwareArchitectConditionCodes.BacklogIncomplete);
+            if (executable.Any(x => x.Approvals.Any(approval =>
+                    approval.PolicyKey == WorkItemApprovalPolicyKeys.SoftwareArchitectureReviewV1 &&
+                    (approval.Status != WorkItemApprovalStatuses.Approved ||
+                     approval.PlanningRevision != x.PlanningRevision))))
+                conditions.Add(SoftwareArchitectConditionCodes.AwaitingDesignApproval);
 
             foreach (var item in executable.OrderBy(x => x.Id))
             {
@@ -696,7 +811,11 @@ Confirmed actions: the Product Manager owns the requirements, acceptance criteri
                     input.StoryId,
                     null,
                     $"{input.IdempotencyKey}:task:{NormalizeKey(task.Key)}")
-                { Planning = planning },
+                {
+                    TypeKey = WorkItemTypeKeys.SoftwareTaskV1,
+                    Planning = planning,
+                    ProposalProvenance = input.ProposalProvenance
+                },
                 cancellationToken);
             if (item.SprintId != input.SprintId)
                 item = await context.Platform.Work.SetItemSprintAsync(
@@ -901,7 +1020,8 @@ No migration is required unless the implementation changes persisted data or a p
                         null,
                         null,
                         null,
-                        $"{domainKey}:epic:{epicKey}"),
+                        $"{domainKey}:epic:{epicKey}")
+                    { TypeKey = WorkItemTypeKeys.SoftwareEpicV1 },
                     cancellationToken);
                 epicIds.Add(epicPlan.Key, epicItem.Id);
                 publishedEpics.Add(new PublishedEpic(epicPlan.Key, epicItem.Id, epicItem.Title));
@@ -919,7 +1039,8 @@ No migration is required unless the implementation changes persisted data or a p
                     null,
                     null,
                     null,
-                    $"{domainKey}:epic"),
+                    $"{domainKey}:epic")
+                { TypeKey = WorkItemTypeKeys.SoftwareEpicV1 },
                 cancellationToken);
             epicIds.Add("legacy", epicItem.Id);
             publishedEpics.Add(new PublishedEpic("legacy", epicItem.Id, epicItem.Title));
@@ -1026,6 +1147,9 @@ No migration is required unless the implementation changes persisted data or a p
                         deliveryReady ? entry.Sprint.EndsAt : null,
                         $"{domainKey}:ticket:{ticketKey}")
                     {
+                        TypeKey = ticketPlan.Kind == WorkItemKinds.Story
+                            ? WorkItemTypeKeys.SoftwareStoryV1
+                            : WorkItemTypeKeys.SoftwareTaskV1,
                         Planning = planning
                     },
                     cancellationToken);

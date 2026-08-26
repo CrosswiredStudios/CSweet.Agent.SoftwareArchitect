@@ -86,12 +86,16 @@ public sealed class ManifestTests
                 CommunicationCapabilities.MessageSend,
                 CommunicationCapabilities.CoordinationRespond,
                 CommunicationCapabilities.CoordinationStartWork,
+                CommunicationCapabilities.CoordinationStartBoard,
                 CommunicationCapabilities.CoordinationList,
                 CommunicationCapabilities.CoordinationRead,
                 CommunicationCapabilities.CoordinationCancel,
                 AgentLifecycleCapabilities.CompleteOnboarding,
                 WorkBoardCapabilities.Read,
                 WorkItemCapabilities.Read,
+                WorkItemCapabilities.ReadTypes,
+                WorkItemCapabilities.RevisePlanning,
+                WorkItemCapabilities.DecideApproval,
                 WorkItemCapabilities.ReadComments,
                 WorkItemCapabilities.Comment,
                 WorkItemCapabilities.Create,
@@ -116,7 +120,8 @@ public sealed class ManifestTests
         Assert.Equal(
             [PersonalTodoEvents.Available, CommunicationEvents.MessageMentioned,
                 AgentLifecycleEvents.Onboarded, CommunicationEvents.MessageReceived,
-                AgentCoordinationEvents.TurnRequested, AgentAttentionEvents.ReviewDue],
+                AgentCoordinationEvents.TurnRequested, WorkItemEvents.ApprovalRequired,
+                AgentAttentionEvents.ReviewDue],
             root.GetProperty("events").GetProperty("subscribes")
                 .EnumerateArray().Select(x => x.GetString()!).ToArray());
         Assert.DoesNotContain(GitWorkspaceCapabilities.Prepare, required);
