@@ -8,7 +8,7 @@
     "specializationKeys": ["software-design", "technical-planning", "distributed-systems"]
   },
   "id": "com.csweet.software-architect",
-  "name": "C-Sweet Software Architect",
+  "name": "Claire Morgan",
   "version": "0.14.0",
   "publisher": {
     "id": "com.csweet",
@@ -1174,6 +1174,9 @@
     }
   ],
   "catalog": {
+    "imageUrl": "https://raw.githubusercontent.com/CrosswiredStudios/CSweet.Agent.SoftwareArchitect/main/assets/branding/portrait-v1.jpg",
+    "companyLogoUrl": "https://raw.githubusercontent.com/CrosswiredStudios/CSweet.Agent.SoftwareArchitect/main/assets/branding/csweet-icon.svg",
+    "accentColor": "#4C555E",
     "summary": "Creates robust system designs and approved incremental implementation plans.",
     "category": "Engineering",
     "role": { "key": "software-architect", "name": "Software Architect" },
