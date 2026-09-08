@@ -102,7 +102,7 @@ internal sealed class IncrementalArchitectureHarness(IAgentLlmClientFactory? llm
             "maxContextWindowTokens", SoftwareArchitectProfile.DefaultContextWindowTokens);
         options.MaxOutputTokens = outputTokens;
 #pragma warning restore MAAI001
-        var agent = chat.AsHarnessAgent(options);
+        var agent = chat.AsHarnessAgent(await CalendarHarness.ConfigureAsync(context, options, cancellationToken));
         var session = await agent.CreateSessionAsync(cancellationToken);
         var boundedContext = System.Text.Json.JsonSerializer.Serialize(brief, IncrementalPlanningJson.Options);
         await foreach (var _ in agent.RunStreamingAsync(

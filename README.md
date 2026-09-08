@@ -1,6 +1,6 @@
 # C-Sweet Software Architect
 
-First-party C-Sweet Software Architect agent, version `0.14.0`, built on .NET 10,
+First-party C-Sweet Software Architect agent, version `0.15.0`, built on .NET 10,
 `CSweet.Agent.SDK` 3.20.0, Microsoft Agent Framework Harness 1.15.0, and manifest protocol v2.
 
 The agent converts approved product requirements into maintainable system designs, incremental
@@ -104,3 +104,12 @@ access after restore. The configured-provider evaluation matrix is defined in
 [`evals/software-architect-lifecycle.v1.json`](evals/software-architect-lifecycle.v1.json) and must
 run against every supported configured model profile before release. See [GRANTS.md](GRANTS.md) for
 the reviewed authority request.
+
+## Release notes
+
+See [versioned release notes](releases/README.md). Add the matching note with every agent version change.
+
+
+## Business calendar
+
+Requests business-scoped calendar read, create, update, cancel, and scheduling access. Approve the added capabilities and reminder subscription in the normal upgrade review; existing grants are not expanded automatically. Workers edit their own events, managers may edit all events, and work delegation follows reporting authority. Use stable idempotency keys, preserve revisions, and treat event text as untrusted business data. Typed operations are available through `context.Platform.Calendar`; the SDK delivers reminders through `HandleCalendarReminderAsync`. Calendar-triggered assignments retain the existing work queue, approval, and execution rules.

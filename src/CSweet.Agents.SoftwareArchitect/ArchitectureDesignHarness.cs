@@ -63,7 +63,7 @@ internal sealed class ArchitectureDesignHarness(
             settings.GetString("customInstructions"),
             maxContextWindowTokens,
             maxOutputTokens);
-        AIAgent harness = chatClient.AsHarnessAgent(options);
+        AIAgent harness = chatClient.AsHarnessAgent(await CalendarHarness.ConfigureAsync(context, options, cancellationToken));
         AgentSession session = await harness.CreateSessionAsync(cancellationToken);
         await foreach (var _ in harness.RunStreamingAsync(
                            BuildPrompt(request, deliveryProfile),

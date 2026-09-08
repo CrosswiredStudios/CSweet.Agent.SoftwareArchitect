@@ -62,7 +62,7 @@ public sealed class ManifestTests
             .ToArray();
 
         Assert.Equal(
-            [
+            ["work.calendar.read.v1", "work.calendar.create.v1", "work.calendar.update.v1", "work.calendar.cancel.v1", "work.calendar.schedule.v1", 
                 PlatformCapabilities.AgentOperatingStateRead,
                 PlatformCapabilities.AgentOperatingStateWrite,
                 MemoryCapabilities.BusinessRead,
@@ -118,7 +118,7 @@ public sealed class ManifestTests
         Assert.Empty(root.GetProperty("webAccess").GetProperty("rules").EnumerateArray());
         Assert.Equal("None", root.GetProperty("runtime").GetProperty("workspaceAccess").GetString());
         Assert.Equal(
-            [PersonalTodoEvents.Available, CommunicationEvents.MessageMentioned,
+            ["com.csweet.calendar.reminder-due.v1", PersonalTodoEvents.Available, CommunicationEvents.MessageMentioned,
                 AgentLifecycleEvents.Onboarded, CommunicationEvents.MessageReceived,
                 AgentCoordinationEvents.TurnRequested, WorkItemEvents.ApprovalRequired,
                 AgentAttentionEvents.ReviewDue],

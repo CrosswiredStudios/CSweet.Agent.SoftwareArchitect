@@ -61,7 +61,7 @@ Call submit_architecture_guidance exactly once. Do not merely print the result.
         var chat = llmClientFactory is null
             ? context.CreateChatClient(selection)
             : await llmClientFactory.CreateChatClientAsync(selection, cancellationToken);
-        var agent = chat.AsHarnessAgent(options);
+        var agent = chat.AsHarnessAgent(await CalendarHarness.ConfigureAsync(context, options, cancellationToken));
         var session = await agent.CreateSessionAsync(cancellationToken);
         var bounded = JsonSerializer.Serialize(new
         {

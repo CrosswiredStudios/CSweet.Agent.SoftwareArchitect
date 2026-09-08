@@ -7,7 +7,7 @@ This repository contains one standalone C-Sweet protocol-v2 agent. Its purpose i
 
 ## Invariants
 
-- Keep `com.csweet.software-architect` and version `0.14.0` synchronized between code, project,
+- Keep `com.csweet.software-architect` and version `0.15.0` synchronized between code, project,
   `csweet-plugin.json`, tests, documentation, and releases.
 - Follow the canonical `AGENT_AUTHORING.md` distributed with `CSweet.Agent.SDK`. Keep this
   repository independently buildable and never add a source-tree reference to the SDK checkout.
@@ -41,3 +41,10 @@ Run from the repository root:
 dotnet test CSweet.Agents.SoftwareArchitect.slnx
 dotnet run --project src/CSweet.Agents.SoftwareArchitect -- --self-test
 ```
+
+## Release-note ordering
+
+- Bump the agent version FIRST, synchronizing the root `csweet-plugin.json`, implementation identity, project/package version, and version assertions as required by this repository.
+- Only AFTER the version bump, read the final `version` back from `csweet-plugin.json` and write `releases/<version>.md` for that exact version (no `v` prefix). Never write the new release's notes under the previous version.
+- If the version changes again during the task, retarget the unpublished notes to the final version. Preserve already published historical notes.
+- Before handoff or publishing, verify that the manifest, implementation/package version, release-note filename, and release-note heading all match. A version bump is incomplete without its matching release notes.

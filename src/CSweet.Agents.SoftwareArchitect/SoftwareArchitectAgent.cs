@@ -1435,14 +1435,14 @@ No migration is required unless the implementation changes persisted data or a p
             {
                 Id = SoftwareArchitectProfile.AgentId,
                 Name = context.Identity?.DisplayName ?? SoftwareArchitectProfile.DisplayName,
-                ChatOptions = new ChatOptions
+                ChatOptions = await context.Platform.Calendar.WithToolsAsync(new ChatOptions
                 {
                     Instructions = instructions,
                     Reasoning = new ReasoningOptions
                     {
                         Output = ReasoningOutput.Full
                     }
-                }
+                }, cancellationToken)
             });
         var prompt = $"""
 Respond within the Software Architect role for capability {capability}.
