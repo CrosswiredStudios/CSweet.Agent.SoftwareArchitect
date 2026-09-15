@@ -15,7 +15,7 @@
   },
   "id": "com.csweet.software-architect",
   "name": "Claire Morgan",
-  "version": "0.15.0",
+  "version": "0.16.0",
   "publisher": {
     "id": "com.csweet",
     "name": "C-Sweet"
@@ -2306,6 +2306,18 @@
       "name": "work.item.comment",
       "scope": "work-item",
       "purpose": "Link bounded architecture guidance to the authoritative work item",
+      "modelVisible": false
+    },
+    {
+      "name": "work.item.comment.update.v1",
+      "scope": "work-item",
+      "purpose": "Correct this agent's own architecture-guidance comment on the authoritative work item",
+      "modelVisible": false
+    },
+    {
+      "name": "work.item.comment.delete.v1",
+      "scope": "work-item",
+      "purpose": "Retract this agent's own architecture-guidance comment while its activity history is retained",
       "modelVisible": false
     },
     {

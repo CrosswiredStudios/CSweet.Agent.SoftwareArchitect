@@ -1,6 +1,6 @@
 # Software Architect grants
 
-This document describes the minimum authority requested by package version `0.15.0`.
+This document describes the minimum authority requested by package version `0.16.0`.
 
 The Product Manager starts durable collaboration. The Architect advances it with
 `communication.coordination.respond.v1`, `communication.coordination.read.v1`, and
@@ -36,6 +36,10 @@ authoritative.
 - `work.item.comments.read` and `work.orchestration.read.v1` ground support in linked comments and
   the exact execution snapshot. Governed retry is requested only for that blocked snapshot and is
   never exposed to the model.
+- `work.item.comment.update.v1` and `work.item.comment.delete.v1` let this installation revise or
+  retract the architecture guidance it linked to an exact work item. Both stay author-scoped and
+  non-model-visible, so agent code can correct its own record and can never rewrite or erase another
+  subject's comment.
 - `work.item.create` and `work.item.estimate` publish planning drafts; `work.item.delivery.finalize` attaches approved executable delivery details, and `work.item.move` promotes only dependency-ready first-sprint work.
 - `work.sprint.create` and `work.sprint.scope.manage` publish planned increments.
 
