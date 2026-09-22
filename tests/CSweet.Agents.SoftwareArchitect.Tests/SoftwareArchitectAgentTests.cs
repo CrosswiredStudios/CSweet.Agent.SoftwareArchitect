@@ -826,8 +826,8 @@ public sealed class SoftwareArchitectAgentTests
             new { });
 
         Assert.True(result.Succeeded);
-        var keys = result.Value!.Value.GetProperty("fields")
-            .EnumerateArray()
+        var fields = result.Value!.Value.GetProperty("fields").EnumerateArray().ToArray();
+        var keys = fields
             .Select(x => x.GetProperty("key").GetString())
             .ToArray();
         Assert.Contains("llmProviderId", keys);
@@ -836,6 +836,10 @@ public sealed class SoftwareArchitectAgentTests
         Assert.Contains("maxOutputTokens", keys);
         Assert.Contains("defaultSprintLengthDays", keys);
         Assert.Contains("customInstructions", keys);
+        Assert.All(fields.Where(field => field.GetProperty("key").GetString() is
+            "maxContextWindowTokens" or "maxOutputTokens"),
+            field => Assert.True(!field.TryGetProperty("maximum", out var maximum) ||
+                maximum.ValueKind == JsonValueKind.Null));
     }
 
     [Fact]

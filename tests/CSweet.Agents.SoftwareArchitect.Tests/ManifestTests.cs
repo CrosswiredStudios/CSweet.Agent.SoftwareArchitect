@@ -37,6 +37,9 @@ public sealed class ManifestTests
                 .GetProperty("defaultValue").GetInt32());
         var outputTokens = configuration.Single(field =>
             field.GetProperty("key").GetString() == "maxOutputTokens");
+        Assert.False(configuration.Single(field => field.GetProperty("key").GetString() ==
+            "maxContextWindowTokens").TryGetProperty("maximum", out _));
+        Assert.False(outputTokens.TryGetProperty("maximum", out _));
         Assert.Equal(
             SoftwareArchitectProfile.DefaultOutputTokens,
             outputTokens.GetProperty("defaultValue").GetInt32());

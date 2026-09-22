@@ -15,7 +15,7 @@
   },
   "id": "com.csweet.software-architect",
   "name": "Claire Morgan",
-  "version": "0.16.0",
+  "version": "0.16.1",
   "publisher": {
     "id": "com.csweet",
     "name": "C-Sweet"
@@ -2431,7 +2431,7 @@
       "label": "Maximum output tokens",
       "required": true,
       "secret": false,
-      "description": "Caps one design response and reserves space during compaction.",
+      "description": "Budget for one design response, including compaction reserve; set this within the selected model and provider limits.",
       "defaultValue": 8000,
       "lessThanFieldKey": "maxContextWindowTokens"
     },

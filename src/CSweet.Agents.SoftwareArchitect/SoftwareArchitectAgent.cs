@@ -63,16 +63,14 @@ public sealed class SoftwareArchitectAgent : CSweetAgentBase
                 required: true,
                 description: "Configures design-harness compaction for the selected model.",
                 minimum: 16_000,
-                maximum: 2_000_000,
                 step: 1_000,
                 defaultValue: SoftwareArchitectProfile.DefaultContextWindowTokens)
             .Number(
                 "maxOutputTokens",
                 "Maximum output tokens",
                 required: true,
-                description: "Caps one design response and reserves space during compaction.",
+                description: "Budget for one design response, including compaction reserve; set this within the selected model and provider limits.",
                 minimum: 1_000,
-                maximum: 200_000,
                 step: 1_000,
                 defaultValue: SoftwareArchitectProfile.DefaultOutputTokens,
                 lessThanFieldKey: "maxContextWindowTokens")
