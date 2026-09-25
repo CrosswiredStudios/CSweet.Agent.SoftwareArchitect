@@ -101,6 +101,8 @@ public sealed class ManifestTests
                 WorkItemCapabilities.DecideApproval,
                 WorkItemCapabilities.ReadComments,
                 WorkItemCapabilities.Comment,
+                WorkItemCapabilities.CommentUpdate,
+                WorkItemCapabilities.CommentDelete,
                 WorkItemCapabilities.Create,
                 WorkItemCapabilities.FinalizeDelivery,
                 WorkItemCapabilities.Estimate,
@@ -113,7 +115,8 @@ public sealed class ManifestTests
                 WorkOrchestrationCapabilities.Retry,
                 GitMergeCapabilities.Review,
                 GitMergeCapabilities.Authorize,
-                SourceControlCapabilities.ProvisionRepository
+                SourceControlCapabilities.ProvisionRepository,
+                WorkstreamCapabilityNames.ReadV1
             ],
             required);
         Assert.Empty(root.GetProperty("credentials").EnumerateArray());

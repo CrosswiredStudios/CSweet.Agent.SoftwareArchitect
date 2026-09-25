@@ -475,6 +475,9 @@ public sealed class SoftwareArchitectAgent : CSweetAgentBase
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        if (request.Transcript.LastOrDefault(x => x.Artifact is not null)?.Artifact?.Type == ProjectDeliveryPlanning.RequestType)
+            return await ProjectDeliveryPlanning.PlanAsync(request, context,
+                context.CreateChatClient(new AgentLlmSelection(Settings.GetGuid("llmProviderId") ?? throw new InvalidOperationException("Configure a planning provider."), Settings.GetString("llmModel"))), cancellationToken);
         var latest = request.Transcript.OrderByDescending(x => x.Ordinal).FirstOrDefault();
         if (string.Equals(request.SourceKind, "WorkItem", StringComparison.Ordinal) &&
             request.WorkSource is { } workSource)
@@ -726,6 +729,14 @@ Confirmed actions: the Product Manager owns the requirements, acceptance criteri
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        if (request.Capability == WorkManagementCapabilityNames.ExecutionRunV1)
+        {
+            var assignment = DeserializePayload<WorkExecutionAssignmentV1>(request.Arguments);
+            if (ProjectDeliveryReview.Supports(assignment) && assignment!.StageKey == "quality")
+                return await ProjectDeliveryReview.ExecuteAsync(assignment, context,
+                    context.CreateChatClient(new AgentLlmSelection(Settings.GetGuid("llmProviderId") ?? throw new InvalidOperationException("Configure a review provider."), Settings.GetString("llmModel"))), false, cancellationToken);
+            return AgentWorkResult.Failure("The Architect supports only its assigned lightweight technical validation stage.");
+        }
         return request.Capability switch
         {
             SoftwareArchitectProfile.DesignCapability =>

@@ -15,7 +15,7 @@
   },
   "id": "com.csweet.software-architect",
   "name": "Claire Morgan",
-  "version": "0.16.1",
+  "version": "0.17.0",
   "publisher": {
     "id": "com.csweet",
     "name": "C-Sweet"
@@ -2095,6 +2095,51 @@
       },
       "executionTimeoutSeconds": 30,
       "idempotency": "work-item"
+    },
+    {
+      "name": "work.execution.run.v1",
+      "description": "Independently review an assigned lightweight project candidate against its exact acceptance criteria and published validation evidence.",
+      "inputSchema": {
+        "type": "object",
+        "required": [
+          "sprintExecutionId",
+          "itemExecutionId",
+          "stageExecutionId",
+          "attemptId",
+          "organizationId",
+          "boardId",
+          "sprintId",
+          "itemId",
+          "assignmentRevision",
+          "boardKey",
+          "itemIdentifier",
+          "policyRevisionId",
+          "stageKey",
+          "traversal",
+          "attempt",
+          "deadline",
+          "instructions",
+          "item",
+          "input",
+          "priorOutcomes",
+          "evidence"
+        ],
+        "properties": {},
+        "additionalProperties": true
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [],
+        "additionalProperties": true
+      },
+      "executionTimeoutSeconds": 1800,
+      "idempotency": "work-item",
+      "riskClass": "standard"
     }
   ],
   "requires": [
@@ -2385,6 +2430,11 @@
       "name": "source-control.repository.provision.v2",
       "scope": "organization",
       "purpose": "Request one policy-bounded private Managed GitHub project when explicitly granted"
+    },
+    {
+      "purpose": "Coordinate and review delivery within current project and assignment authority.",
+      "name": "platform.workstream.read.v1",
+      "scope": "organization"
     }
   ],
   "events": {
