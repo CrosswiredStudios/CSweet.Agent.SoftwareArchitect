@@ -227,8 +227,8 @@ mutation or invent business facts, capacity, dates, approvals, or existing syste
 
 {(request.OutcomeHierarchyRequired
     ? request.RollingRefinement
-        ? "Reconcile the existing outcome Epics and sprint-grouped Stories without changing their stable keys. Preserve active and completed scope, and fully decompose every new or incomplete Story into child Tasks. Set epicKey on every Story and parentStoryKey on every Task; a Task and parent Story must share a sprint."
-        : "Organize the complete known scope into outcome Epics and sprint-grouped Stories. Fully decompose every Story into child Tasks before publication. Set epicKey on every Story and parentStoryKey on every Task; a Task and parent Story must share a sprint."
+        ? "Reconcile the existing outcome Epics and sprint-grouped Stories without changing their stable keys. Preserve active and completed scope, and fully decompose every new or incomplete Story into child Tasks. Set epicKey on every Story and parentStoryKey on every Task; only Tasks consume sprint capacity; a Story may span its child Tasks across sprints."
+        : "Organize the complete known scope into outcome Epics and sprint-grouped Stories. Fully decompose every Story into child Tasks before publication. Set epicKey on every Story and parentStoryKey on every Task; only Tasks consume sprint capacity; a Story may span its child Tasks across sprints."
     : "Organize the work into sprint-grouped Stories and Tasks using the v1 flat planning contract.")}
 
 Each sprint must deliver a coherent, demonstrable vertical increment. Each Story or Task must be

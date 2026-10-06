@@ -48,7 +48,9 @@ internal sealed class IncrementalArchitectureHarness(IAgentLlmClientFactory? llm
             "Submit no more than eight junior-ready Tasks for only the current Story and page.",
             "Decompose only this Story. Return at most eight Tasks on this page. Every Task must contain " +
             "implementation requirements, boundary, constraints, dependencies, edge cases, tests, objective evidence, " +
-            "and definition of done. Set isFinalPage only when no additional Tasks are needed. Call submit_task_page exactly once.",
+            "and definition of done. Set deliveryKind to Artifact for document or other non-code tasks and Code for implementation. " +
+            "Every task receives independent QA, including documents and small fixes. Stories and epics are aggregate containers. " +
+            "Set isFinalPage only when no additional Tasks are needed. Call submit_task_page exactly once.",
             Math.Min(8_000, settings.GetInt32("maxOutputTokens", SoftwareArchitectProfile.DefaultOutputTokens)),
             context,
             settings,

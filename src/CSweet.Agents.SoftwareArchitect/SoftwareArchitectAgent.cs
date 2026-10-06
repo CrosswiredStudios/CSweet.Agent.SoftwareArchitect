@@ -10,7 +10,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 namespace CSweet.Agents.SoftwareArchitect;
 
-public sealed class SoftwareArchitectAgent : CSweetAgentBase
+public sealed partial class SoftwareArchitectAgent : CSweetAgentBase
 {
     private readonly IArchitectureDesignGenerator _designGenerator;
     private readonly IAgentLlmClientFactory? _llmClientFactory;
@@ -128,7 +128,7 @@ public sealed class SoftwareArchitectAgent : CSweetAgentBase
     {
         var board = await context.Platform.Work.ReadBoardAsync(boardId, cancellationToken);
         var pending = board.Items
-            .Where(x => x.TypeKey is WorkItemTypeKeys.SoftwareStoryV1 or WorkItemTypeKeys.SoftwareTaskV1)
+            .Where(x => x.TypeKey is WorkItemTypeKeys.SoftwareStoryV1 or WorkItemTypeKeys.SoftwareTaskV1 or WorkItemTypeKeys.SoftwareStoryV2 or WorkItemTypeKeys.SoftwareTaskV2)
             .Where(x => x.Approvals.Any(approval =>
                 approval.PolicyKey == WorkItemApprovalPolicyKeys.SoftwareArchitectureReviewV1 &&
                 (approval.Status == WorkItemApprovalStatuses.Pending ||
@@ -153,7 +153,7 @@ public sealed class SoftwareArchitectAgent : CSweetAgentBase
             if (work.Planning?.Requirements.Count is null or 0) missing.Add("requirements");
             if (work.Planning?.AcceptanceCriteria.Count is null or 0) missing.Add("acceptance criteria");
             if (string.IsNullOrWhiteSpace(work.Planning?.ArchitectureArtifactDigest)) missing.Add("approved design linkage");
-            if (work.TypeKey == WorkItemTypeKeys.SoftwareTaskV1 &&
+            if ((work.TypeKey is WorkItemTypeKeys.SoftwareTaskV1 or WorkItemTypeKeys.SoftwareTaskV2) &&
                 work.Planning?.DelegationRecommendations.Count is null or 0)
                 missing.Add("technical delegation guidance");
             return new
@@ -732,6 +732,9 @@ Confirmed actions: the Product Manager owns the requirements, acceptance criteri
         if (request.Capability == WorkManagementCapabilityNames.ExecutionRunV1)
         {
             var assignment = DeserializePayload<WorkExecutionAssignmentV1>(request.Arguments);
+            if (assignment?.StageKey == "technical-review")
+                return await DeliveryTaskTechnicalReview.ExecuteAsync(assignment, context,
+                    context.CreateChatClient(new AgentLlmSelection(Settings.GetGuid("llmProviderId") ?? throw new InvalidOperationException("Configure a review provider."), Settings.GetString("llmModel"))), cancellationToken);
             if (ProjectDeliveryReview.Supports(assignment) && assignment!.StageKey == "quality")
                 return await ProjectDeliveryReview.ExecuteAsync(assignment, context,
                     context.CreateChatClient(new AgentLlmSelection(Settings.GetGuid("llmProviderId") ?? throw new InvalidOperationException("Configure a review provider."), Settings.GetString("llmModel"))), false, cancellationToken);
@@ -806,6 +809,7 @@ Confirmed actions: the Product Manager owns the requirements, acceptance criteri
                     .ToArray())
             {
                 DependencyItemIds = dependencies,
+                DeliveryKind = task.DeliveryKind,
                 DelegationRecommendations = task.DelegationRecommendations,
                 ArchitectureArtifactDigest = input.Proposal.ApprovedDesignDigest
             };
@@ -821,7 +825,7 @@ Confirmed actions: the Product Manager owns the requirements, acceptance criteri
                     null,
                     $"{input.IdempotencyKey}:task:{NormalizeKey(task.Key)}")
                 {
-                    TypeKey = WorkItemTypeKeys.SoftwareTaskV1,
+                    TypeKey = story.TypeKey == WorkItemTypeKeys.SoftwareStoryV2 ? WorkItemTypeKeys.SoftwareTaskV2 : WorkItemTypeKeys.SoftwareTaskV1,
                     Planning = planning,
                     ProposalProvenance = input.ProposalProvenance
                 },
@@ -1137,7 +1141,8 @@ No migration is required unless the implementation changes persisted data or a p
                     DependencyItemIds = ticketPlan.Dependencies
                         .Select(key => itemIds[key])
                         .ToArray(),
-                    ArchitectureArtifactDigest = input.Design!.PlanHash
+                    ArchitectureArtifactDigest = input.Design!.PlanHash,
+                    DeliveryKind = ticketPlan.DeliveryKind
                 };
                 var parentItemId = hierarchical
                     ? ticketPlan.Kind == WorkItemKinds.Story

@@ -168,7 +168,7 @@ internal static class ArchitecturePlanPolicy
                 return $"Sprint {sprint.Ordinal} exceeds the {deliveryProfile.SprintLengthDays}-day team-aware execution window.";
             if (sprint.Tickets is null || sprint.Tickets.Count == 0)
                 return $"Sprint {sprint.Ordinal} requires at least one independently testable ticket.";
-            if (!sprint.Tickets.Any(x => x.Kind == WorkItemKinds.Story))
+            if (!requireOutcomeHierarchy && !sprint.Tickets.Any(x => x.Kind == WorkItemKinds.Story))
                 return $"Sprint {sprint.Ordinal} requires a vertical, independently testable Story.";
 
             foreach (var ticket in sprint.Tickets)
@@ -230,8 +230,6 @@ internal static class ArchitecturePlanPolicy
                 if (string.IsNullOrWhiteSpace(entry.Ticket.ParentStoryKey) ||
                     !stories.TryGetValue(entry.Ticket.ParentStoryKey, out var parent))
                     return $"Task '{entry.Ticket.Key}' must reference an existing parent Story.";
-                if (parent.Sprint != entry.Sprint)
-                    return $"Task '{entry.Ticket.Key}' must be grouped into the same sprint as its parent Story.";
                 if (!string.IsNullOrWhiteSpace(entry.Ticket.EpicKey) &&
                     !string.Equals(entry.Ticket.EpicKey, parent.Ticket.EpicKey, StringComparison.OrdinalIgnoreCase))
                     return $"Task '{entry.Ticket.Key}' cannot reference a different outcome Epic than its parent Story.";
@@ -603,6 +601,8 @@ internal static class ArchitecturePlanPolicy
 ## Planning policy
 - Stories under this Epic express customer or product value.
 - Every Story is fully decomposed into junior-ready Tasks before publication.
+- Documents use deliveryKind Artifact and every task receives independent QA; no task skips QA.
+- Stories and epics remain containers; validation and release acceptance run under an activated delivery plan.
 - Starting delivery remains an explicit Product Manager action after preflight.
 """;
 

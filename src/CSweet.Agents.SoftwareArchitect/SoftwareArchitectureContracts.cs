@@ -101,6 +101,7 @@ public sealed record ArchitectureTicketPlan(
     string MigrationAndRollback,
     decimal? EstimatePoints)
 {
+    public string DeliveryKind { get; init; } = "Code";
     public string? EpicKey { get; init; }
     public string? ParentStoryKey { get; init; }
 }

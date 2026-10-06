@@ -188,6 +188,22 @@ public sealed class SoftwareArchitectAgentTests
     }
 
     [Fact]
+    public async Task DesignV2_AllowsAnExistingStoryToContinueAcrossSprints()
+    {
+        var plan = ArchitecturePlanSamples.MinimalHierarchicalPlan();
+        var continued = plan.Sprints[0].Tickets.Single(x => x.Kind == WorkItemKinds.Task) with
+            { Key = "CONTINUED-TASK", Dependencies = [] };
+        plan = plan with
+        {
+            Sprints = [plan.Sprints[0], plan.Sprints[1] with { Tickets = [.. plan.Sprints[1].Tickets, continued] }],
+            RequirementTraceability = plan.RequirementTraceability.Select(x => x with { TicketKeys = [.. x.TicketKeys, continued.Key] }).ToArray()
+        };
+        var result = await DesignRuntime().ExecuteCapabilityAsync(new SoftwareArchitectAgent(new StubDesignGenerator(plan)),
+            SoftwareArchitectProfile.DesignCapabilityV2, ValidDesignRequest());
+        Assert.True(result.Succeeded, result.Error);
+    }
+
+    [Fact]
     public async Task DesignV2_RequiresTasksForStoriesInEverySprint()
     {
         var plan = ArchitecturePlanSamples.MinimalHierarchicalPlan();

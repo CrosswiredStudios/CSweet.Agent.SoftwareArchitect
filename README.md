@@ -1,7 +1,7 @@
 # C-Sweet Software Architect
 
 First-party C-Sweet Software Architect agent, version `0.15.0`, built on .NET 10,
-`CSweet.Agent.SDK` 3.56.0, Microsoft Agent Framework Harness 1.15.0, and manifest protocol v2.
+`CSweet.Agent.SDK` 3.59.0, Microsoft Agent Framework Harness 1.15.0, and manifest protocol v2.
 
 The agent converts approved product requirements into maintainable system designs, incremental
 sprint plans, and developer-ready tickets. Product and Project Managers retain ownership of
@@ -38,9 +38,10 @@ the v2 hierarchy: the complete known scope is represented by sprint-grouped Stor
 is fully decomposed into junior-ready Tasks before publication. Large plans are published through
 dependency-ordered, idempotent batches of at most 40 ticket mutations.
 
-The agent never starts or completes sprints, selects staff or repositories, manually reassigns
-work, writes code, merges, deploys, or publishes releases. Approved publication only binds each
-ticket's Development and QA stages to the Product Manager-authorized active assignment pools.
+The Product Manager authorizes sprint work and delivery scope. Within explicit grants, the architect
+configures story/release topology, provides independent task Technical Review and assesses aggregate
+readiness. Trusted platform actions perform integration. Task QA follows story integration; artifact
+tasks also receive independent QA. Promotion does not authorize deployment or public release.
 
 ## Continuous operation
 
@@ -121,3 +122,7 @@ manager and returns a bounded architecture, backlog and sprint sequence. The Pro
 and assigns that proposal. The Architect also provides `work.execution.run.v1` exclusively for
 its assigned lightweight quality review: exact patch, actual developer validation evidence, and
 criterion-by-criterion acceptance. It does not select staff, start sprints, or authorize merges.
+
+## Hierarchical delivery
+
+The V2 assignment identifies Task, Story, Epic or Release scope. Tasks require an authorized sprint; aggregate reviews require an active delivery plan and do not invent sprint identities. Use the exact assigned branch, commit or artifact revision. Every task requires independent QA, including documents. Managers accept aggregate candidates using current evidence; task completion does not promote to main or authorize deployment.

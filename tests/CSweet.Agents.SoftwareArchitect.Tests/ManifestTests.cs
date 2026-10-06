@@ -65,7 +65,8 @@ public sealed class ManifestTests
             .ToArray();
 
         Assert.Equal(
-            ["work.calendar.read.v1", "work.calendar.create.v1", "work.calendar.update.v1", "work.calendar.cancel.v1", "work.calendar.schedule.v1", 
+            [WorkDeliveryCapabilities.Read, WorkDeliveryCapabilities.Evidence, WorkDeliveryCapabilities.Configure,
+                "work.calendar.read.v1", "work.calendar.create.v1", "work.calendar.update.v1", "work.calendar.cancel.v1", "work.calendar.schedule.v1",
                 PlatformCapabilities.AgentOperatingStateRead,
                 PlatformCapabilities.AgentOperatingStateWrite,
                 MemoryCapabilities.BusinessRead,
