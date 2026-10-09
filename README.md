@@ -85,8 +85,8 @@ the authority boundary for designing and publishing work.
 
 - `llmProviderId`: approved C-Sweet provider profile.
 - `llmModel`: chat model used for design and conversation.
-- `maxContextWindowTokens`: bounded planning context budget; default 32,000.
-- `maxOutputTokens`: one-response budget; default 8,000 and always lower than the context budget.
+- `maxContextWindowTokens`: bounded planning context budget; default 256,000.
+- `maxOutputTokens`: one-response budget; default 128,000 and always lower than the context budget.
 - `defaultSprintLengthDays`: human-inclusive cadence used when a request omits one; default 14.
   Agent-only teams default to one-day dependency-based execution windows and do not receive human
   story-point estimates.

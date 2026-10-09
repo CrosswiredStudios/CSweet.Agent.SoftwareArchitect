@@ -15,7 +15,7 @@
   },
   "id": "com.csweet.software-architect",
   "name": "Claire Morgan",
-  "version": "0.18.0",
+  "version": "0.18.1",
   "publisher": {
     "id": "com.csweet",
     "name": "C-Sweet"
@@ -2717,7 +2717,7 @@
       "required": true,
       "secret": false,
       "description": "Configures design-harness compaction for the selected model.",
-      "defaultValue": 32000
+      "defaultValue": 256000
     },
     {
       "key": "maxOutputTokens",
@@ -2726,7 +2726,7 @@
       "required": true,
       "secret": false,
       "description": "Budget for one design response, including compaction reserve; set this within the selected model and provider limits.",
-      "defaultValue": 8000,
+      "defaultValue": 128000,
       "lessThanFieldKey": "maxContextWindowTokens"
     },
     {
