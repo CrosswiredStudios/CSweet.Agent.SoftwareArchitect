@@ -117,7 +117,7 @@ public sealed class ManifestTests
                 GitMergeCapabilities.Review,
                 GitMergeCapabilities.Authorize,
                 SourceControlCapabilities.ProvisionRepository,
-                WorkstreamCapabilityNames.ReadV1
+                WorkstreamCapabilityNames.ReadV1, ..DelegationCapabilities.All
             ],
             required);
         Assert.Empty(root.GetProperty("credentials").EnumerateArray());
@@ -128,7 +128,7 @@ public sealed class ManifestTests
             ["com.csweet.calendar.reminder-due.v1", PersonalTodoEvents.Available, CommunicationEvents.MessageMentioned,
                 AgentLifecycleEvents.Onboarded, CommunicationEvents.MessageReceived,
                 AgentCoordinationEvents.TurnRequested, WorkItemEvents.ApprovalRequired,
-                AgentAttentionEvents.ReviewDue],
+                AgentAttentionEvents.ReviewDue, DelegationCapabilities.Received, DelegationCapabilities.Changed],
             root.GetProperty("events").GetProperty("subscribes")
                 .EnumerateArray().Select(x => x.GetString()!).ToArray());
         Assert.DoesNotContain(GitWorkspaceCapabilities.Prepare, required);

@@ -1,7 +1,7 @@
 # C-Sweet Software Architect
 
 First-party C-Sweet Software Architect agent, version `0.15.0`, built on .NET 10,
-`CSweet.Agent.SDK` 3.59.0, Microsoft Agent Framework Harness 1.15.0, and manifest protocol v2.
+`CSweet.Agent.SDK` 3.65.0, Microsoft Agent Framework Harness 1.15.0, and manifest protocol v2.
 
 The agent converts approved product requirements into maintainable system designs, incremental
 sprint plans, and developer-ready tickets. Product and Project Managers retain ownership of
@@ -126,3 +126,7 @@ criterion-by-criterion acceptance. It does not select staff, start sprints, or a
 ## Hierarchical delivery
 
 The V2 assignment identifies Task, Story, Epic or Release scope. Tasks require an authorized sprint; aggregate reviews require an active delivery plan and do not invent sprint identities. Use the exact assigned branch, commit or artifact revision. Every task requires independent QA, including documents. Managers accept aggregate candidates using current evidence; task completion does not promote to main or authorize deployment.
+
+## Delegation and tracking
+
+SDK 3.65.0 dispatches authenticated delegation before specialist conversation fallback. The manifest requests delegation, work tracking, directory and conversation reads, personal commitments and model interpretation. These declarations require reviewed grants; existing resource permissions and approval rules still apply. The shared SDK owns coordinator reporting and wake recovery.
