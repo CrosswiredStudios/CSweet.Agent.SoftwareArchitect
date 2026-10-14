@@ -119,7 +119,7 @@ Requests business-scoped calendar read, create, update, cancel, and scheduling a
 
 The Architect accepts `project.delivery.plan-request.v1` from an approved project's accountable
 manager and returns a bounded architecture, backlog and sprint sequence. The Producer publishes
-and assigns that proposal. The Architect also provides `work.execution.run.v1` exclusively for
+and assigns that proposal. The Architect also provides `work.execution.run` exclusively for
 its assigned lightweight quality review: exact patch, actual developer validation evidence, and
 criterion-by-criterion acceptance. It does not select staff, start sprints, or authorize merges.
 
@@ -130,3 +130,7 @@ The V2 assignment identifies Task, Story, Epic or Release scope. Tasks require a
 ## Delegation and tracking
 
 SDK 3.65.0 dispatches authenticated delegation before specialist conversation fallback. The manifest requests delegation, work tracking, directory and conversation reads, personal commitments and model interpretation. These declarations require reviewed grants; existing resource permissions and approval rules still apply. The shared SDK owns coordinator reporting and wake recovery.
+
+## Execution contract (1.0.0)
+
+Execution uses one `work.execution.run` capability and `WorkExecutionAssignment` from SDK/WorkManagement.Contracts 4.0.0. Task and aggregate scopes retain their distinct authority checks within that envelope. Upgrade the platform and executing agents together; no legacy execution adapter remains.

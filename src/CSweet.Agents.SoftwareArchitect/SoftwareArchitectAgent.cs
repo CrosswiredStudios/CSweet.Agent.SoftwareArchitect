@@ -624,9 +624,9 @@ Confirmed actions: the Product Manager owns the requirements, acceptance criteri
                     {
                         DelegationRecommendations =
                         [
-                            new("development", "software-developer", ["work.execution.run.v1"],
+                            new("development", "software-developer", ["work.execution.run"],
                                 null, false, "Implementation requires an eligible software Developer."),
-                            new("quality", "software-qa", ["work.execution.run.v1"],
+                            new("quality", "software-qa", ["work.execution.run"],
                                 null, false, "Independent verification requires eligible QA capacity.")
                         ]
                     }).ToArray()
@@ -729,9 +729,9 @@ Confirmed actions: the Product Manager owns the requirements, acceptance criteri
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        if (request.Capability == WorkManagementCapabilityNames.ExecutionRunV1)
+        if (request.Capability == WorkManagementCapabilityNames.ExecutionRun)
         {
-            var assignment = DeserializePayload<WorkExecutionAssignmentV1>(request.Arguments);
+            var assignment = DeserializePayload<WorkExecutionAssignment>(request.Arguments);
             if (assignment?.StageKey == "technical-review")
                 return await DeliveryTaskTechnicalReview.ExecuteAsync(assignment, context,
                     context.CreateChatClient(new AgentLlmSelection(Settings.GetGuid("llmProviderId") ?? throw new InvalidOperationException("Configure a review provider."), Settings.GetString("llmModel"))), cancellationToken);
