@@ -1,7 +1,7 @@
 # C-Sweet Software Architect
 
-First-party C-Sweet Software Architect agent, version `0.15.0`, built on .NET 10,
-`CSweet.Agent.SDK` 3.65.0, Microsoft Agent Framework Harness 1.15.0, and manifest protocol v2.
+First-party C-Sweet Software Architect agent, version `1.0.1`, built on .NET 10,
+`CSweet.Agent.SDK` 4.2.0, Microsoft Agent Framework Harness 1.15.0, and manifest protocol v2.
 
 The agent converts approved product requirements into maintainable system designs, incremental
 sprint plans, and developer-ready tickets. Product and Project Managers retain ownership of
@@ -134,3 +134,5 @@ SDK 3.65.0 dispatches authenticated delegation before specialist conversation fa
 ## Execution contract (1.0.0)
 
 Execution uses one `work.execution.run` capability and `WorkExecutionAssignment` from SDK/WorkManagement.Contracts 4.0.0. Task and aggregate scopes retain their distinct authority checks within that envelope. Upgrade the platform and executing agents together; no legacy execution adapter remains.
+
+Uses SDK 4.2.0 bounded exact-publication task technical review and repository source hygiene. Install the matching platform broker and trusted Git publisher before upgrading. Existing generated/dependency files require explicit source cleanup; build recipes generate deployable artifacts from pinned dependencies.
