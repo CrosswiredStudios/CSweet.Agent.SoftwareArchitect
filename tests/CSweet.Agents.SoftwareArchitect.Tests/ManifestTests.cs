@@ -23,7 +23,7 @@ public sealed class ManifestTests
         Assert.Contains(SoftwareArchitectProfile.PublishStoryTasksCapability, manifest.Capabilities);
         Assert.Contains(AgentConfigurationCapabilities.Describe, manifest.Capabilities);
         Assert.Contains(AgentConfigurationCapabilities.Update, manifest.Capabilities);
-        Assert.Equal("AlwaysOn", manifest.Runtime.DefaultActivationMode);
+        Assert.Equal("OnDemand", manifest.Runtime.DefaultActivationMode);
         Assert.Equal(1, manifest.Runtime.MaximumConcurrentJobs);
         using var document = JsonDocument.Parse(await File.ReadAllTextAsync(path));
         Assert.Equal("individual-contributor.v1",
